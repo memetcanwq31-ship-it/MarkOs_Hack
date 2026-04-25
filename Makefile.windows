@@ -1,0 +1,28 @@
+# Windows için Makefile
+# Kullanım: mingw32-make -f Makefile.windows
+
+COMPILER = g++
+FLAGS = -std=c++11 -Wall -Wextra
+TARGET = m3sfmode.exe
+SRC = src/main.cpp
+
+all: $(TARGET)
+
+$(TARGET): $(SRC)
+	$(COMPILER) $(FLAGS) -o $(TARGET) $(SRC)
+	@echo.
+	@echo M3SFMODE.EXE derlemesi tamamlandi!
+	@echo.
+
+run: $(TARGET)
+	@echo.
+	@echo M3SFMODE baslatiliyor...
+	@echo.
+	$(TARGET)
+
+clean:
+	@if exist $(TARGET) del $(TARGET)
+	@if exist *.o del *.o
+	@echo Temizlik tamamlandi!
+
+.PHONY: all run clean
