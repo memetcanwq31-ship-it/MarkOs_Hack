@@ -1,2 +1,2 @@
-# https-github.com-wordsploit
+# wordsploit
 Bu Benim İlk İşletim Sistemim
