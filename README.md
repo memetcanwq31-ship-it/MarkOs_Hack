@@ -1,5 +1,7 @@
 # 🛠️ Wordsploit - İlk İşletim Sistemim
 
+![BTK Academy - Sibel Güvenlik A.Ş](assets/btk-academy-banner.svg)
+
 > Bu Benim İlk İşletim Sistemim / My First Operating System
 > 
 > **HER PLATFORMDA ÇALIŞIR** 🚀
@@ -181,7 +183,7 @@ wsl --install
 ### Seçenek 3: Chocolatey Paket Yöneticisi
 ```bash
 # Chocolatey yükle
-Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.We[...] 
 
 # Araçları yükle
 choco install python git cmake -y
@@ -290,33 +292,6 @@ sudo wireshark &
 
 # SQLMap
 sqlmap -u "http://target.com/page.php?id=1" --dbs
-```
-
-### Kali Linux'ta Flipper Zero Emülasyonu
-```bash
-# Flipper firmware
-apt install -y qemu-system-arm arm-none-eabi-gcc
-
-# Flipper projesi klonla
-git clone https://github.com/flipperdevices/flipperzero-firmware.git
-cd flipperzero-firmware
-
-# Derleme
-make
-```
-
-### Kali Linux'ta Brute Force (Tam List)
-```bash
-# WordList konumları
-/usr/share/wordlists/
-/usr/share/wordlists/rockyou.txt      # 14 milyon şifre
-/usr/share/wordlists/dirbuster/       # Web dizinleri
-/usr/share/seclists/                  # SecLists collection
-
-# Hydra tüm protokoller
-hydra -l admin -P rockyou.txt \
-  -M targets.txt \
-  -f ssh,ftp,http-post-form
 ```
 
 ---
