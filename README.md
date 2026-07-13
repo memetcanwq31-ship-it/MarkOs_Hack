@@ -2,7 +2,7 @@
 
 ![BTK Academy - Sibel Güvenlik A.Ş](assets/btk-academy-banner.svg)
 
-> Bu Benim İlk İşletim Sistemim / My First Operating System
+> TT Sywox TX 🇩🇪/ My First Operating System
 > 
 > **HER PLATFORMDA ÇALIŞIR** 🚀
 > - 📱 Termux (Android)
