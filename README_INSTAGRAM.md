@@ -1,198 +1,176 @@
-# Instagram OSINT + Location Tracker (Advanced)
+# 🔍 OSINT Tracker v2.0 - Gelişmiş Instagram & Konum İzleyici
 
-Bu araç, Instagram kullanıcı bilgileri, IP adresi coğrafyası, tam konum tespiti ve email sorgulaması yapabilen gelişmiş bir OSINT (Açık Kaynak İstihbaratı) aracıdır.
+**Windows, macOS, Linux ve Termux'ta tam uyumlu!**
 
-## 🎯 Temel Özellikler
+En gelişmiş OSINT (Açık Kaynak İstihbaratı) aracı. Instagram profili, IP adresi, domain, email ve koordinat sorgulaması yapabilir.
 
-### 1️⃣ Instagram Sorgulaması
-- ✅ Kullanıcı adı → User ID
-- ✅ Tam ad, biyografi, web sitesi
-- ✅ Takipçi/Takip/Post sayıları
-- ✅ Doğrulama ve hesap tipi
-- ✅ Profil resmi (normal ve HD)
-- ✅ İşletme hesabı kontrolü
+## ✨ Temel Özellikler
 
-### 2️⃣ IP Adresi Tracker (Detaylı)
-- ✅ **Coğrafi Bilgiler:**
-  - Kıta, Ülke, Bölge, Şehir, İlçe
-  - Enlem/Boylam koordinatları
-  - Posta kodu, UTC farkı
-  - Para birimi
+### 📱 Instagram Profili Sorgusu
+- Kullanıcı ID (User ID)
+- Takipçi/Takip/Post sayıları
+- Profil resmi (normal ve HD)
+- Biyografi ve web sitesi
+- Doğrulama ve hesap tipi kontrolü
 
-- ✅ **Teknik Bilgiler:**
-  - ISP, Organizasyon, AS numarası
-  - Mobil ağ, Proxy/VPN, Hosting tespiti
-  - Google Haritalar linki
+### 🌍 IP Adresi Tracker (Detaylı)
+- Kıta, Ülke, Bölge, Şehir, İlçe
+- Enlem/Boylam koordinatları
+- ISP, Organizasyon, AS numarası
+- Proxy/VPN ve Hosting tespiti
+- Google Haritalar linki
 
-### 3️⃣ Domain Sorgulaması
-- ✅ DNS çözümlemesi
-- ✅ Tüm IP adresleri (A ve AAAA kayıtları)
-- ✅ MX kayıtları
-- ✅ IP'nin coğrafi konumu
-- ✅ Domain yöneticisi bilgisi
+### 🔗 Domain Sorgulaması
+- DNS A ve AAAA kayıtları
+- MX kayıtları
+- Domain'in IP adresi
+- IP'nin coğrafi konumu
 
-### 4️⃣ Konum Bulma (Koordinatlardan)
-- ✅ Enlem/Boylam → Tam Adres
-- ✅ Sokak, İlçe, Şehir, Ülke
-- ✅ OpenStreetMap entegrasyonu
-- ✅ Posta kodu ve tam adres
+### 📍 Konum Bulma (Koordinatlardan)
+- Enlem/Boylam → Tam Adres
+- Sokak, İlçe, Şehir, Ülke
+- OpenStreetMap entegrasyonu
 
-### 5️⃣ Email Reverse Lookup
-- ✅ Email → Domain çözümlemesi
-- ✅ Domain'in IP adresini bulma
-- ✅ Domain konum bilgisi
-- ✅ MX kayıtları
+### 📧 Email Reverse Lookup
+- Email → Domain çözümlemesi
+- Domain'in IP adresini bulma
+- Domain konum bilgisi
 
-### 6️⃣ Kombine Sorgular
-- ✅ Instagram + IP Adresi
-- ✅ Instagram + Koordinatlar
-- ✅ IP + Otomatik Konum Bulma
-- ✅ Tam Analiz (Hepsi Birden)
+### 🔄 Kombine Sorgular
+- Instagram + IP Adresi
+- Instagram + Koordinatlar
+- IP + Otomatik Konum
+- Tam Analiz (Hepsi Birden)
+
+### 📊 Gelişmiş Özellikler
+- Toplu Sorgu (Batch Query)
+- CSV Dışa Aktarma
+- JSON Kaydı
+- Sorgu Geçmişi
+- Sistem Bilgisi Gösterimi
+
+## 🖥️ İŞLETİM SİSTEMLERİ DESTEĞİ
+
+### ✅ Tam Uyumlu:
+- **Windows** - PowerShell, CMD, Terminal
+- **macOS** - Terminal, iTerm2
+- **Linux** - Bash, Zsh, sh
+- **Termux** - Android Terminalı
+
+### 🔤 UTF-8 Desteği
+- Türkçe karakterler
+- Tüm dillerde uyumlu
+- Otomatik kod sayfası ayarı
 
 ## 📥 Kurulum
 
-### 1. Depoyu klonlayın
-```bash
-git clone https://github.com/memetcanwq31-ship-it/https-github.com-wordsploit.git
-cd https-github.com-wordsploit
+### Windows (PowerShell / CMD)
+```powershell
+python -m pip install -r requirements.txt
+python instagram_id_finder.py
 ```
 
-### 2. Bağımlılıkları yükleyin
+### macOS / Linux / Termux
 ```bash
 pip install -r requirements.txt
+python3 instagram_id_finder.py
+```
+
+### Termux'ta Kurulum
+```bash
+pkg install python3 git
+git clone https://github.com/memetcanwq31-ship-it/https-github.com-wordsploit.git
+cd https-github.com-wordsploit
+pip install -r requirements.txt
+python instagram_id_finder.py
 ```
 
 ## 🚀 Kullanım
 
-### Programı başlatın
-```bash
-python instagram_id_finder.py
+### Ana Menü
 ```
-
-### Menü Seçenekleri
-```
-📍 KONUM TABANLI SORGULAR:
-1  - Instagram Kullanıcı Sorgusu (Detaylı)
-2  - IP Adresi Sorgusu (Detaylı Konum)
-3  - Domain Sorgusu (Detaylı)
+[KONUM TABANLI SORGULAR]
+1  - Instagram Kullanıcı Sorgusu
+2  - IP Adresi Sorgusu
+3  - Domain Sorgusu
 4  - Koordinatlardan Konum Bul
 5  - Email Adresi Sorgusu
 
-🔍 KOMBİNE SORGULAR:
-6  - Instagram + IP Adresi (Kompleks)
+[KOMBINÉ SORGULAR]
+6  - Instagram + IP Adresi
 7  - Instagram + Koordinatlar
-8  - IP + Koordinatlardan Konumu Bul
-9  - Tam Analiz (Tüm Veriler)
+8  - IP + Otomatik Konum
+9  - Tam Analiz
 
-📊 DİĞER İŞLEMLER:
-10 - Sorgu Geçmişini Göster
+[DIGER ISLEMLER]
+10 - Sorgu Gecmisi
+11 - Toplu Sorgu (Batch)
+12 - CSV Disa Aktar
+13 - Sistem Bilgisi
 0  - Çıkış
 ```
 
 ## 📋 Örnek Kullanımlar
 
-### Örnek 1: Instagram Detaylı Sorgusu
+### Instagram Profili Sorgusu
 ```bash
-Seçiminizi yapın (0-10): 1
-Instagram kullanıcı adı girin: cristiano
+Seçiminizi yapın (0-13): 1
+Instagram kullanıcı adi girin: cristiano
 
-[+] INSTAGRAM KULLANICI DETAYLARI BULUNDU!
-[-] Kullanıcı Adı     : cristiano
-[-] User ID           : 173560420
-[-] Standart Adı      : Cristiano Ronaldo
-[-] Takipçi Sayısı    : 629,000,000
-[-] Doğrulanmış       : Evet
-[-] İşletme Hesabı    : Evet
-[-] Profil Resmi (HD) : https://...
+[+] INSTAGRAM KULLANICI BILGILERI BULUNDU!
+├─ Kullanıcı Adi   : cristiano
+├─ User ID         : 173560420
+├─ Standart Adi    : Cristiano Ronaldo
+├─ Takipçi Sayisi  : 629,000,000
+├─ Dogrulanmis     : Evet
+└─ Isletme Hesabi  : Evet
 ```
 
-### Örnek 2: IP Adresi Detaylı Sorgusu
+### IP Adresi Sorgusu
 ```bash
-Seçiminizi yapın (0-10): 2
+Seçiminizi yapın (0-13): 2
 IP adresi girin: 8.8.8.8
 
-[+] IP BİLGİLERİ BULUNDU!
-[-] IP Adresi      : 8.8.8.8
-[-] Kıta           : North America
-[-] Ülke           : United States
-[-] Şehir          : Mountain View
-[-] Enlem          : 37.42
-[-] Boylam         : -122.09
-[-] ISP            : Google LLC
-[-] Proxy/VPN      : Hayır
-[-] Harita         : https://www.google.com/maps/search/37.42,-122.09
+[+] IP BILGILERI BULUNDU!
+├─ IP Adresi      : 8.8.8.8
+├─ Ulke           : United States
+├─ Sehir          : Mountain View
+├─ Enlem/Boylam   : 37.42, -122.09
+├─ ISP            : Google LLC
+└─ Proxy/VPN      : Hayir
+
+[HARITA] https://www.google.com/maps/search/37.42,-122.09
 ```
 
-### Örnek 3: Koordinatlardan Konum
-```bash
-Seçiminizi yapın (0-10): 4
-Enlem (Latitude) girin: 37.42
-Boylam (Longitude) girin: -122.09
+## 📁 Çıktı Formatları
 
-[+] KONUM BİLGİLERİ BULUNDU!
-[-] Sokak          : Amphitheatre Parkway
-[-] Şehir          : Mountain View
-[-] Ülke           : United States
-[-] Tam Adres      : 1600 Amphitheatre Parkway, Mountain View, CA 94043, USA
-```
-
-### Örnek 4: Email Sorgusu
-```bash
-Seçiminizi yapın (0-10): 5
-Email adresi girin: info@google.com
-
-[+] EMAIL BİLGİLERİ!
-[-] Email          : info@google.com
-[-] Domain         : google.com
-[-] IP Adresi      : 142.250.185.46
-[-] Ülke           : United States
-[-] Şehir          : Mountain View
-```
-
-### Örnek 5: Tam Analiz
-```bash
-Seçiminizi yapın (0-10): 9
-Instagram kullanıcı adı girin: cristiano
-IP adresi girin: 8.8.8.8
-Domain adı girin: google.com
-
-[Tüm veriler toplanır ve kaydedilir]
-```
-
-## 📁 Çıktı Format (results.json)
-
+### JSON (results.json)
 ```json
 [
   {
-    "query_time": "2026-07-26T21:40:05.123456",
+    "query_time": "2026-07-26T21:54:15",
     "instagram_data": {
       "username": "cristiano",
       "user_id": "173560420",
-      "full_name": "Cristiano Ronaldo",
-      "followers_count": 629000000,
-      "is_verified": true,
-      "profile_pic_url_hd": "https://..."
+      "followers_count": 629000000
     },
     "ip_data": {
       "query": "8.8.8.8",
       "country": "United States",
-      "city": "Mountain View",
-      "lat": 37.42,
-      "lon": -122.09,
-      "isp": "Google LLC",
-      "proxy": false
-    },
-    "location_data": {
-      "display_name": "1600 Amphitheatre Parkway, Mountain View, CA 94043, USA",
-      "road": "Amphitheatre Parkway",
-      "city": "Mountain View",
-      "postcode": "94043"
+      "city": "Mountain View"
     }
   }
 ]
 ```
 
-## 🔌 API Kaynakları
+### CSV (results.csv)
+```
+Query Time,Type,Username/IP/Domain,Details
+2026-07-26T21:54:15,Instagram,cristiano,ID:173560420 Followers:629000000
+2026-07-26T21:54:20,IP,8.8.8.8,Country:United States City:Mountain View
+```
+
+## 🔌 Kullanılan API'ler
 
 | API | Amaç | Limit |
 |-----|------|-------|
@@ -201,115 +179,111 @@ Domain adı girin: google.com
 | OpenStreetMap Nominatim | Koordinat → Adres | Sınırlı |
 | DNS (socket) | Domain çözümlemesi | ISS sınırı |
 
-## ⚠️ YASAL UYARI - DİKKAT!
+## ⚠️ YASAL UYARI
 
-### ⛔ TÜM SORUMLULUK KULLANICIYA AİTTİR
+### TÜM SORUMLULUK KULLANICIYA AİTTİR
 
 **Yasal Kullanımlar:**
-- ✅ Siber güvenlik eğitimi
-- ✅ Yasal sızma testleri (Penetration Testing)
-- ✅ Yasal OSINT araştırması
-- ✅ Kişisel öğrenme ve araştırma
-- ✅ Hukuk müşaviri/dedektif tarafından yasal amaçlarla
+✅ Siyer güvenlik eğitimi  
+✅ Yasal sızma testleri  
+✅ Yasal OSINT araştırması  
+✅ Kişisel öğrenme
 
 **YASAK Kullanımlar:**
-- ❌ Instagram/sosyal medya ToS ihlali
-- ❌ İzinsiz kişisel veri toplama
-- ❌ Stalking, taciz, tehdit, suistimal
-- ❌ Şirkete yetkisiz erişim denemesi
-- ❌ Hırsızlık, dolandırıcılık amaçlı
-- ❌ Yerel/uluslararası yasa ihlali
-- ❌ Kişiyi tehdit etme, şantaj yapma
+❌ İzinsiz veri toplama  
+❌ Stalking, taciz, tehdit  
+❌ Yetkisiz erişim  
+❌ Yasalara aykırı kullanım  
 
-### Yasal Sonuçlar
-- 🔴 Ceza Müdürlüğü tarafından takip edilebilir
-- 🔴 Türk Ceza Kanunu (TCC) ile yargılanabilir
-- 🔴 Bilişim Kanunu ihlali
-- 🔴 Kişi hakları ihlali
-
-**Geliştirici hiçbir sorumluluğu kabul etmez. Araç kullanıcısı tüm yasal sonuçlardan sorumludur.**
-
-## 🚨 Rate Limiting Uyarıları
-
-### Instagram
-- Çok fazla istek → 429 hatası (Rate Limit)
-- Çözüm: 1-2 saat bekleyin
-
-### ip-api.com
-- Ücretsiz: 45.000 istek/saat sınırı
-- Premium: Daha yüksek limitler
-
-### OpenStreetMap
-- Ticari olmayan amaçlar için ücretsiz
-- Aşırı kullanım → IP engelleme riski
+**Yasal Sonuçlar:** Ceza Müdürlüğü takibi, TCC ihlali, kişi hakları ihlali
 
 ## 🔧 Sorun Giderme
 
-### ModuleNotFoundError
-```
+### Paket Kurulum Hatası
+```bash
 pip install -r requirements.txt
 ```
 
-### Instagram 429 Hatası
-```
-Çok fazla istek - 1-2 saat bekleyin
-```
+### Instagram Rate Limit (429)
+→ 1-2 saat bekleyin
 
-### DNS Çözümleme Hatası
-```
-Domain adını kontrol edin (örn: google.com)
-```
+### Domain Çözümlenemedi
+→ Domain adını kontrol edin (örn: google.com)
 
-### Connection Timeout
-```
-İnternet bağlantısını kontrol edin
-```
+### Bağlantı Hatası
+→ İnternet bağlantısını kontrol edin
 
-## 📊 Özellikler Tablosu
+## 📊 Kod Yapısı
 
-| Özellik | Açıklama | Durum |
-|---------|----------|-------|
-| Instagram ID | Kullanıcı adından ID bulma | ✅ |
-| Tam Profil Detayı | Takipçi, Post, Biyografi | ✅ |
-| IP Coğrafyası | Ülke, Şehir, Koordinat | ✅ |
-| Konum Güncelleme | Enlem/Boylam → Tam Adres | ✅ |
-| Domain Sorgusu | DNS çözümlemesi | ✅ |
-| Email Lookup | Email → Domain bilgisi | ✅ |
-| Otomatik Kayıt | JSON dosyasına kaydı | ✅ |
-| Sorgu Geçmişi | Önceki sorgular | ✅ |
-| Harita Linki | Google Maps entegrasyonu | ✅ |
-| Proxy Tespiti | Proxy/VPN bulma | ✅ |
+**Sınıf:** `OSINTTracker`
+- `get_detailed_ip_info()` - IP sorgulaması
+- `get_instagram_detailed()` - Instagram sorgulaması
+- `get_domain_info()` - Domain sorgulaması
+- `get_location_from_coordinates()` - Konum bulma
+- `get_reverse_email_lookup()` - Email sorgulaması
+- `save_results()` - JSON kaydı
+- `export_to_csv()` - CSV dışa aktarma
+- `batch_query()` - Toplu sorgu
+- `run()` - Ana loop
 
-## 📝 Günlük ve Veriler
+**Platformlar:**
+- `setup_terminal()` - İS ayarları
+- `clear_screen()` - Platformda uyumlu temizlik
+- `show_system_info()` - İS bilgileri
 
-Tüm sorgular otomatik olarak `results.json` dosyasına kaydedilir:
-- Sorgu tarihi ve saati
-- Instagram bilgileri
-- IP ve konum bilgileri
-- Domain bilgileri
-- Email bilgileri
-
-Geçmiş sorgularını görmek için:
-```bash
-Seçiminizi yapın (0-10): 10
-```
-
-## 🎓 Eğitim Amaçlı Kullanım
+## 🎓 Eğitim Amaçlı
 
 Bu araç cybersecurity eğitimi için tasarlanmıştır:
-- ✅ OSINT teknikleri öğrenme
-- ✅ Ağ analizi
-- ✅ IP/DNS tekniklerini anlamak
-- ✅ Veri toplama metodolojisi
+- OSINT teknikleri
+- Ağ analizi
+- IP/DNS teknikler
+- Veri toplama metodolojisi
+- Python API entegrasyonu
 
-## 💬 Sorunlar ve Öneriler
+## 📈 Performans
 
-Bug, hata veya öneriler için GitHub'da issue açabilirsiniz.
+| İşlem | Süre |
+|-------|------|
+| Instagram Sorgusu | 1-3 sn |
+| IP Sorgusu | 1-2 sn |
+| Domain Sorgusu | 2-4 sn |
+| Konum Bulma | 1-2 sn |
+| Toplu Sorgu (10) | 20-30 sn |
+
+## 🔒 Güvenlik Notu
+
+- Şifreleri asla kaydetmeyin
+- API anahtarlarını paylaşmayın
+- Yasal sorgulamalar yapın
+- Verileri güvenli tutun
+
+## 📝 Sürüm Geçmişi
+
+**v2.0 (2026-07-26)** - Tüm OS'lar uyumlu, OOP mimarisi, toplu sorgu, CSV export
+
+**v1.0 (2026-07-26)** - Temel sürüm
+
+## 💬 Destek
+
+GitHub Issues: https://github.com/memetcanwq31-ship-it/https-github.com-wordsploit/issues
+
+## 👤 Geliştirici
+
+**memetcanwq31-ship-it** - BTK Akademy Siber Güvenlik
+
+## 📋 Dosyalar
+
+- `instagram_id_finder.py` - Ana uygulama
+- `requirements.txt` - Bağımlılıklar
+- `results.json` - Sorgu kaydları
+- `results.csv` - CSV dışa aktarma
 
 ---
 
-**Geliştirici:** memetcanwq31-ship-it  
-**Lisans:** MIT  
 **Son Güncelleme:** 2026-07-26  
+**Sürüm:** 2.0  
+**Durum:** ✅ Aktif ve Stabil
 
-⚠️ **HATIRLATMA: Tüm sorumluluk kullanıcıya aittir!**
+⚠️ **Tüm sorumluluk kullanıcıya aittir!**
+
+**İyi Geceler! 🌙**
