@@ -1,8 +1,19 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+OSINT Tracker v2.0
+Tüm işletim sistemlerinde uyumlu
+Windows, macOS, Linux ve Termux desteği
+"""
+
 import requests
 import json
 import sys
 import socket
 import re
+import os
+import platform
 from datetime import datetime
 from urllib.parse import urlparse
 import threading
@@ -12,13 +23,35 @@ class OSINTTracker:
     """
     Gelişmiş OSINT ve Konum Tracker Sistemi
     Instagram, IP, Domain, Email ve Koordinat Sorgulaması
+    Tüm işletim sistemlerde uyumlu
     """
     
     def __init__(self):
         self.results = []
         self.session = requests.Session()
         self.session.timeout = 10
+        self.os_type = platform.system()  # Windows, Darwin (macOS), Linux
+        self.setup_terminal()
         
+    def setup_terminal(self):
+        """Terminal ayarlarını işletim sistemine göre yapılandırır"""
+        try:
+            if self.os_type == "Windows":
+                # Windows CMD desteği
+                os.system("chcp 65001 > nul 2>&1")  # UTF-8 desteği
+            elif self.os_type in ["Linux", "Darwin"]:
+                # Linux ve macOS
+                os.system("clear" if self.os_type == "Darwin" else "clear")
+        except:
+            pass
+    
+    def clear_screen(self):
+        """Terminali temizler (tüm işletim sistemlerinde uyumlu)"""
+        try:
+            os.system("cls" if self.os_type == "Windows" else "clear")
+        except:
+            pass
+    
     def get_detailed_ip_info(self, ip_address):
         """
         IP adresinin detaylı coğrafi, teknik ve güvenlik bilgilerini alır.
@@ -38,7 +71,7 @@ class OSINTTracker:
                 data = response.json()
                 
                 if data.get("status") == "success":
-                    print("\n[+] ✅ IP BİLGİLERİ BULUNDU!")
+                    print("\n[+] IP BILGILERI BULUNDU!")
                     self._print_ip_details(data)
                     return data
                 else:
@@ -59,24 +92,24 @@ class OSINTTracker:
     
     def _print_ip_details(self, data):
         """IP detaylarını formatlanmış şekilde yazdırır"""
-        print(f"├─ 🌐 IP Adresi      : {data.get('query')}")
-        print(f"├─ 🌍 Kıta           : {data.get('continent')} ({data.get('continentCode')})")
-        print(f"├─ 🗺️  Ülke           : {data.get('country')} ({data.get('countryCode')})")
-        print(f"├─ 📍 Bölge          : {data.get('regionName')}")
-        print(f"├─ 🏙️  Şehir          : {data.get('city')}")
-        print(f"├─ 📮 Posta Kodu     : {data.get('zip')}")
-        print(f"├─ 📐 Enlem/Boylam   : {data.get('lat')}, {data.get('lon')}")
-        print(f"├─ 🕐 Saat Dilimi    : {data.get('timezone')} (UTC {data.get('offset')})")
-        print(f"├─ 💰 Para Birimi    : {data.get('currency')}")
-        print(f"├─ 🔗 ISP            : {data.get('isp')}")
-        print(f"├─ 🏢 Organizasyon   : {data.get('org')}")
-        print(f"├─ 🔢 AS Numarası    : {data.get('as')}")
-        print(f"├─ 📡 Mobil          : {'✓ Evet' if data.get('mobile') else '✗ Hayır'}")
-        print(f"├─ 🔒 Proxy/VPN      : {'⚠️  TESPITLENMIŞ!' if data.get('proxy') else '✓ Hayır'}")
-        print(f"└─ 🖥️  Hosting        : {'✓ Evet' if data.get('hosting') else '✗ Hayır'}")
+        print(f"├─ IP Adresi      : {data.get('query')}")
+        print(f"├─ Kita           : {data.get('continent')} ({data.get('continentCode')})")
+        print(f"├─ Ulke           : {data.get('country')} ({data.get('countryCode')})")
+        print(f"├─ Bolge          : {data.get('regionName')}")
+        print(f"├─ Sehir          : {data.get('city')}")
+        print(f"├─ Posta Kodu     : {data.get('zip')}")
+        print(f"├─ Enlem/Boylam   : {data.get('lat')}, {data.get('lon')}")
+        print(f"├─ Saat Dilimi    : {data.get('timezone')} (UTC {data.get('offset')})")
+        print(f"├─ Para Birimi    : {data.get('currency')}")
+        print(f"├─ ISP            : {data.get('isp')}")
+        print(f"├─ Organizasyon   : {data.get('org')}")
+        print(f"├─ AS Numarasi    : {data.get('as')}")
+        print(f"├─ Mobil          : {'Evet' if data.get('mobile') else 'Hayir'}")
+        print(f"├─ Proxy/VPN      : {'TESPITLENMIS!' if data.get('proxy') else 'Hayir'}")
+        print(f"└─ Hosting        : {'Evet' if data.get('hosting') else 'Hayir'}")
         
         map_url = f"https://www.google.com/maps/search/{data.get('lat')},{data.get('lon')}"
-        print(f"\n[📍] Harita: {map_url}")
+        print(f"\n[HARITA] {map_url}")
     
     def get_instagram_detailed(self, username):
         """
@@ -90,7 +123,7 @@ class OSINTTracker:
         
         url = f"https://www.instagram.com/api/v1/users/web_profile_info/?username={username}"
         
-        print(f"\n[*] '{username}' kullanıcısı Instagram'dan sorgulanıyor...")
+        print(f"\n[*] '{username}' kullanicisi Instagram'dan sorgulanıyor...")
         
         try:
             response = self.session.get(url, headers=headers, timeout=10)
@@ -118,39 +151,40 @@ class OSINTTracker:
                         "created_at": datetime.now().isoformat()
                     }
                     
-                    print("\n[+] ✅ INSTAGRAM KULLANICI BİLGİLERİ BULUNDU!")
+                    print("\n[+] INSTAGRAM KULLANICI BILGILERI BULUNDU!")
                     self._print_instagram_details(user_info)
                     return user_info
                 else:
-                    print("[-] Hata: Kullanıcı verisi ayrıştırılamadı.")
+                    print("[-] Hata: Kullanici verisi ayristirilamadi.")
                     return None
                     
             elif response.status_code == 404:
-                print("[-] ❌ Hata: Böyle bir Instagram kullanıcısı bulunamadı (404).")
+                print("[-] Hata: Boyle bir Instagram kullanicisi bulunamadi (404).")
             elif response.status_code == 429:
-                print("[!] ⚠️  Hata: Instagram çok fazla istek gönderdiğinizi algıladı (Rate Limit - 429).")
-                print("[*] 💡 Çözüm: 1-2 saat bekleyin ve tekrar deneyin.")
+                print("[!] Hata: Instagram cok fazla istek gonderdiginizi algıladi (Rate Limit - 429).")
+                print("[*] Cozum: 1-2 saat bekleyin ve tekrar deneyin.")
             else:
-                print(f"[!] Sunucu hatası. Durum kodu: {response.status_code}")
+                print(f"[!] Sunucu hatasi. Durum kodu: {response.status_code}")
                 
         except requests.exceptions.RequestException as e:
-            print(f"[!] Bağlantı hatası oluştu: {e}")
+            print(f"[!] Baglantı hatasi olusty: {e}")
         
         return None
     
     def _print_instagram_details(self, user_info):
         """Instagram detaylarını formatlanmış şekilde yazdırır"""
-        print(f"├─ 👤 Kullanıcı Adı   : {user_info['username']}")
-        print(f"├─ 🆔 User ID         : {user_info['user_id']}")
-        print(f"├─ 📝 Standart Adı    : {user_info['full_name']}")
-        print(f"├─ 📄 Biyografi       : {user_info['biography'][:50]}..." if user_info['biography'] else "├─ 📄 Biyografi       : [Boş]")
-        print(f"├─ 🌐 Web Sitesi      : {user_info['website'] if user_info['website'] else '[Belirtilmemiş]'}")
-        print(f"├─ 👥 Takipçi Sayısı  : {user_info['followers_count']:,}")
-        print(f"├─ 👉 Takip Sayısı    : {user_info['following_count']:,}")
-        print(f"├─ 📸 Post Sayısı     : {user_info['post_count']:,}")
-        print(f"├─ 🔐 Gizli Hesap     : {'✓ Evet' if user_info['is_private'] else '✗ Hayır'}")
-        print(f"├─ ✅ Doğrulanmış     : {'✓ Evet' if user_info['is_verified'] else '✗ Hayır'}")
-        print(f"└─ 🏢 İşletme Hesabı  : {'✓ Evet' if user_info['is_business_account'] else '✗ Hayır'}")
+        print(f"├─ Kullanıcı Adi   : {user_info['username']}")
+        print(f"├─ User ID         : {user_info['user_id']}")
+        print(f"├─ Standart Adi    : {user_info['full_name']}")
+        bio = user_info['biography'][:50] + "..." if user_info['biography'] and len(user_info['biography']) > 50 else user_info['biography'] if user_info['biography'] else "[Bos]"
+        print(f"├─ Biyografi       : {bio}")
+        print(f"├─ Web Sitesi      : {user_info['website'] if user_info['website'] else '[Belirtilmemis]'}")
+        print(f"├─ Takipçi Sayisi  : {user_info['followers_count']:,}")
+        print(f"├─ Takip Sayisi    : {user_info['following_count']:,}")
+        print(f"├─ Post Sayisi     : {user_info['post_count']:,}")
+        print(f"├─ Gizli Hesap     : {'Evet' if user_info['is_private'] else 'Hayir'}")
+        print(f"├─ Dogrulanmis     : {'Evet' if user_info['is_verified'] else 'Hayir'}")
+        print(f"└─ Isletme Hesabi  : {'Evet' if user_info['is_business_account'] else 'Hayir'}")
     
     def get_domain_info(self, domain):
         """
@@ -169,9 +203,9 @@ class OSINTTracker:
             domain_info["primary_ip"] = ip
             domain_info["ip_addresses"].append(ip)
             
-            print(f"\n[+] ✅ DOMAIN BİLGİLERİ BULUNDU!")
-            print(f"├─ 🌐 Domain         : {domain}")
-            print(f"├─ 🔗 Birincil IP    : {ip}")
+            print(f"\n[+] DOMAIN BILGILERI BULUNDU!")
+            print(f"├─ Domain         : {domain}")
+            print(f"└─ Birincil IP    : {ip}")
             
             ip_details = self.get_detailed_ip_info(ip)
             if ip_details:
@@ -180,9 +214,9 @@ class OSINTTracker:
             return domain_info
         
         except socket.gaierror:
-            print(f"[-] ❌ Hata: Domain çözümlenemedi.")
+            print(f"[-] Hata: Domain cozumlenmedi.")
         except Exception as e:
-            print(f"[!] Domain sorgulaması hatası: {e}")
+            print(f"[!] Domain sorgulamasi hatasi: {e}")
         
         return None
     
@@ -201,19 +235,19 @@ class OSINTTracker:
                 data = response.json()
                 address = data.get("address", {})
                 
-                print("\n[+] ✅ KONUM BİLGİLERİ BULUNDU!")
-                print(f"├─ 📍 Koordinatlar   : {lat}, {lon}")
-                print(f"├─ 🛣️  Sokak         : {address.get('road', '[Bilinmiyor]')}")
-                print(f"├─ 📮 İlçe           : {address.get('suburb', '[Bilinmiyor]')}")
-                print(f"├─ 🏙️  Şehir         : {address.get('city', '[Bilinmiyor]')}")
-                print(f"├─ 📍 Bölge          : {address.get('state', '[Bilinmiyor]')}")
-                print(f"├─ 🌍 Ülke           : {address.get('country', '[Bilinmiyor]')}")
-                print(f"├─ 📮 Posta Kodu    : {address.get('postcode', '[Bilinmiyor]')}")
-                print(f"└─ 📄 Tam Adres      : {data.get('display_name', '[Bilinmiyor]')}")
+                print("\n[+] KONUM BILGILERI BULUNDU!")
+                print(f"├─ Koordinatlar   : {lat}, {lon}")
+                print(f"├─ Sokak         : {address.get('road', '[Bilinmiyor]')}")
+                print(f"├─ Ilçe           : {address.get('suburb', '[Bilinmiyor]')}")
+                print(f"├─ Sehir         : {address.get('city', '[Bilinmiyor]')}")
+                print(f"├─ Bolge          : {address.get('state', '[Bilinmiyor]')}")
+                print(f"├─ Ulke           : {address.get('country', '[Bilinmiyor]')}")
+                print(f"├─ Posta Kodu    : {address.get('postcode', '[Bilinmiyor]')}")
+                print(f"└─ Tam Adres      : {data.get('display_name', '[Bilinmiyor]')}")
                 
                 return data
         except Exception as e:
-            print(f"[!] Konum sorgulaması hatası: {e}")
+            print(f"[!] Konum sorgulamasi hatasi: {e}")
         
         return None
     
@@ -230,15 +264,15 @@ class OSINTTracker:
         
         try:
             if "@" not in email:
-                print("[-] ❌ Geçersiz email formatı!")
+                print("[-] Gecersiz email formati!")
                 return None
             
             domain = email.split('@')[1]
             email_info["domain"] = domain
             
-            print(f"\n[+] ✅ EMAIL BİLGİLERİ!")
-            print(f"├─ 📧 Email          : {email}")
-            print(f"└─ 🌐 Domain         : {domain}")
+            print(f"\n[+] EMAIL BILGILERI!")
+            print(f"├─ Email          : {email}")
+            print(f"└─ Domain         : {domain}")
             
             domain_info = self.get_domain_info(domain)
             if domain_info:
@@ -246,7 +280,7 @@ class OSINTTracker:
             
             return email_info
         except Exception as e:
-            print(f"[!] Email sorgulaması hatası: {e}")
+            print(f"[!] Email sorgulamasi hatasi: {e}")
         
         return None
     
@@ -268,34 +302,44 @@ class OSINTTracker:
             with open(filename, 'w', encoding='utf-8') as f:
                 json.dump(existing, f, indent=4, ensure_ascii=False)
             
-            print(f"\n[✓] Sonuçlar '{filename}' dosyasına kaydedildi!")
+            print(f"\n[OK] Sonuçlar '{filename}' dosyasina kaydedildi!")
             return True
         except Exception as e:
-            print(f"[!] Dosya kaydetme hatası: {e}")
+            print(f"[!] Dosya kaydetme hatasi: {e}")
             return False
     
     def display_menu(self):
         """Ana menüyü gösterir."""
         print("\n" + "=" * 70)
-        print("   🔍 GELIŞMIŞ INSTAGRAM OSINT + LOCATION TRACKER (v2.0)   ")
+        print("   OSINT TRACKER v2.0 - INSTAGRAM + LOCATION (Tüm İS'ler)")
         print("=" * 70)
-        print("\n📍 KONUM TABANLI SORGULAR:")
-        print("1  - Instagram Kullanıcı Sorgusu (Detaylı)")
-        print("2  - IP Adresi Sorgusu (Detaylı Konum)")
-        print("3  - Domain Sorgusu (Detaylı)")
+        print("\n[KONUM TABANLI SORGULAR]")
+        print("1  - Instagram Kullanıcı Sorgusu")
+        print("2  - IP Adresi Sorgusu")
+        print("3  - Domain Sorgusu")
         print("4  - Koordinatlardan Konum Bul")
         print("5  - Email Adresi Sorgusu")
-        print("\n🔍 KOMBİNE SORGULAR:")
-        print("6  - Instagram + IP Adresi (Kompleks)")
+        print("\n[KOMBINÉ SORGULAR]")
+        print("6  - Instagram + IP Adresi")
         print("7  - Instagram + Koordinatlar")
-        print("8  - IP + Koordinatlardan Konumu Bul")
-        print("9  - Tam Analiz (Tüm Veriler)")
-        print("\n📊 DİĞER İŞLEMLER:")
-        print("10 - Sorgu Geçmişini Göster")
+        print("8  - IP + Otomatik Konum")
+        print("9  - Tam Analiz")
+        print("\n[DIGER ISLEMLER]")
+        print("10 - Sorgu Gecmisi")
         print("11 - Toplu Sorgu (Batch)")
-        print("12 - Sonuçları Dışa Aktar (CSV)")
-        print("0  - Çıkış")
+        print("12 - CSV Disa Aktar")
+        print("13 - Sistem Bilgisi")
+        print("0  - Çıkis")
         print("=" * 70)
+    
+    def show_system_info(self):
+        """Sistem bilgilerini gösterir"""
+        print("\n[+] SISTEM BILGILERI")
+        print(f"├─ İS           : {platform.system()} {platform.release()}")
+        print(f"├─ Mimarı       : {platform.machine()}")
+        print(f"├─ Python       : {platform.python_version()}")
+        print(f"├─ Processor    : {platform.processor()}")
+        print(f"└─ Hostname     : {socket.gethostname()}")
     
     def export_to_csv(self):
         """Sonuçları CSV formatında dışa aktarır."""
@@ -313,31 +357,31 @@ class OSINTTracker:
                         ip = result['ip_data']
                         f.write(f"{result['query_time']},IP,{ip.get('query')},Country:{ip.get('country')} City:{ip.get('city')}\n")
             
-            print("[✓] Veriler 'results.csv' dosyasına aktarıldı!")
+            print("[OK] Veriler 'results.csv' dosyasina aktarıldı!")
         except Exception as e:
-            print(f"[!] CSV aktarım hatas��: {e}")
+            print(f"[!] CSV aktarım hatasi: {e}")
     
     def batch_query(self):
         """Toplu sorgu işlemini yürütür."""
         print("\n[*] Toplu Sorgu Modu")
-        print("Sorgulamak istediğiniz Instagram kullanıcılarını girin (virgülle ayrılmış):")
+        print("Sorgulamak istediginiz Instagram kullanıcılarini girin (virgülle ayrilmis):")
         usernames = input("> ").split(',')
         
         for username in usernames:
             username = username.strip()
-            print(f"\n[→] {username} sorgulanıyor...")
+            print(f"\n[->] {username} sorgulanıyor...")
             result = {
                 "query_time": datetime.now().isoformat(),
                 "instagram_data": self.get_instagram_detailed(username)
             }
             self.save_results(result)
-            time.sleep(2)  # Rate limiting
+            time.sleep(2)
     
     def run(self):
         """Ana program döngüsü."""
         while True:
             self.display_menu()
-            choice = input("\nSeçiminizi yapın (0-12): ").strip()
+            choice = input("\nSeçiminizi yapın (0-13): ").strip()
             
             result = {
                 "query_time": datetime.now().isoformat(),
@@ -349,7 +393,7 @@ class OSINTTracker:
             }
             
             if choice == "1":
-                username = input("Instagram kullanıcı adı girin: ").strip()
+                username = input("Instagram kullanıcı adi girin: ").strip()
                 if username:
                     result["instagram_data"] = self.get_instagram_detailed(username)
                     self.save_results(result)
@@ -361,7 +405,7 @@ class OSINTTracker:
                     self.save_results(result)
             
             elif choice == "3":
-                domain = input("Domain adı girin: ").strip()
+                domain = input("Domain adi girin: ").strip()
                 if domain:
                     result["domain_data"] = self.get_domain_info(domain)
                     self.save_results(result)
@@ -373,7 +417,7 @@ class OSINTTracker:
                     result["location_data"] = self.get_location_from_coordinates(lat, lon)
                     self.save_results(result)
                 except ValueError:
-                    print("[-] ❌ Geçersiz koordinatlar!")
+                    print("[-] Gecersiz koordinatlar!")
             
             elif choice == "5":
                 email = input("Email adresi girin: ").strip()
@@ -381,10 +425,10 @@ class OSINTTracker:
                     result["email_data"] = self.get_reverse_email_lookup(email)
                     self.save_results(result)
                 else:
-                    print("[-] ❌ Geçersiz email adresi!")
+                    print("[-] Gecersiz email adresi!")
             
             elif choice == "6":
-                username = input("Instagram kullanıcı adı girin: ").strip()
+                username = input("Instagram kullanıcı adi girin: ").strip()
                 ip = input("IP adresi girin: ").strip()
                 if username:
                     result["instagram_data"] = self.get_instagram_detailed(username)
@@ -393,7 +437,7 @@ class OSINTTracker:
                 self.save_results(result)
             
             elif choice == "7":
-                username = input("Instagram kullanıcı adı girin: ").strip()
+                username = input("Instagram kullanıcı adi girin: ").strip()
                 try:
                     lat = float(input("Enlem girin: ").strip())
                     lon = float(input("Boylam girin: ").strip())
@@ -402,7 +446,7 @@ class OSINTTracker:
                     result["location_data"] = self.get_location_from_coordinates(lat, lon)
                     self.save_results(result)
                 except ValueError:
-                    print("[-] ❌ Geçersiz giriş!")
+                    print("[-] Gecersiz giris!")
             
             elif choice == "8":
                 ip = input("IP adresi girin: ").strip()
@@ -414,9 +458,9 @@ class OSINTTracker:
                     self.save_results(result)
             
             elif choice == "9":
-                username = input("Instagram kullanıcı adı girin: ").strip()
+                username = input("Instagram kullanıcı adi girin: ").strip()
                 ip = input("IP adresi girin: ").strip()
-                domain = input("Domain adı girin (opsiyonel): ").strip()
+                domain = input("Domain adi girin (opsiyonel): ").strip()
                 
                 if username:
                     result["instagram_data"] = self.get_instagram_detailed(username)
@@ -434,13 +478,13 @@ class OSINTTracker:
                 try:
                     with open("results.json", 'r', encoding='utf-8') as f:
                         history = json.load(f)
-                        print(f"\n[📊] Son {min(10, len(history))} sorgu:")
+                        print(f"\n[GECMIS] Son {min(10, len(history))} sorgu:")
                         for i, query in enumerate(history[-10:], 1):
                             ig_user = query.get('instagram_data', {}).get('username', 'N/A') if query.get('instagram_data') else 'N/A'
                             ip_addr = query.get('ip_data', {}).get('query', 'N/A') if query.get('ip_data') else 'N/A'
                             print(f"{i}. {query.get('query_time')} | IG: {ig_user} | IP: {ip_addr}")
                 except FileNotFoundError:
-                    print("[-] Henüz sorgu kaydı yok!")
+                    print("[-] Henuz sorgu kaydi yok!")
             
             elif choice == "11":
                 self.batch_query()
@@ -448,17 +492,28 @@ class OSINTTracker:
             elif choice == "12":
                 self.export_to_csv()
             
+            elif choice == "13":
+                self.show_system_info()
+            
             elif choice == "0":
-                print("\n[👋] Programdan çıkılıyor... Görüşmek üzere!")
+                print("\n[BYE] Programdan çıkılıyor...")
                 break
             
             else:
-                print("[-] ❌ Geçersiz seçim!")
+                print("[-] Gecersiz seçim!")
 
 if __name__ == "__main__":
-    print("\n" + "🔐" * 35)
-    print("OSINT TRACKER v2.0 - Başlatılıyor...")
-    print("🔐" * 35 + "\n")
+    print("\n" + "=" * 70)
+    print("OSINT TRACKER v2.0 - BASLATILIYOR")
+    print("Windows, macOS, Linux ve Termux Desteği")
+    print("=" * 70 + "\n")
     
-    tracker = OSINTTracker()
-    tracker.run()
+    try:
+        tracker = OSINTTracker()
+        tracker.run()
+    except KeyboardInterrupt:
+        print("\n\n[!] Program kesinti ile sonlandi.")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n[!] Kritik hata: {e}")
+        sys.exit(1)
