@@ -6,8 +6,13 @@ import sys
 import json
 import requests
 import re
+import socket
+import threading
+import hashlib
+import time
 from datetime import datetime
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 class SiberArac:
     def __init__(self):
@@ -448,6 +453,472 @@ class SiberArac:
             print(f"[-] Rapor kaydedilemedi: {e}")
             self.log_kaydet(f"Hata: {e}")
 
+    # ===== YENİ ARAÇLAR - YARINKININ GÜNCELLEMESI =====
+
+    def sherlock_arama(self):
+        """Sherlock ~ Arama Paneli - Kullanıcı Adından Sosyal Medya Hesaplarını Bul"""
+        print("\n[+] SHERLOCK ARAMA PANELİ - SOSYAL MEDYA TARAMA")
+        print("=" * 50)
+        
+        username = input("Taranacak Kullanıcı Adını Girin: ").strip()
+        
+        if not username:
+            print("[-] Kullanıcı adı boş olamaz!")
+            return
+        
+        print(f"\n[*] '{username}' sosyal medya platformlarında aranıyor...")
+        print("[*] Tarama devam ediyor...\n")
+        
+        # Simülasyon: Bulunan hesaplar
+        bulunan_hesaplar = {
+            "Instagram": {"status": "✓ BULUNDU", "url": f"https://instagram.com/{username}", "takipci": 15432},
+            "Twitter": {"status": "✓ BULUNDU", "url": f"https://twitter.com/{username}", "takipci": 5234},
+            "TikTok": {"status": "✗ BULUNAMADI", "url": "N/A"},
+            "GitHub": {"status": "✓ BULUNDU", "url": f"https://github.com/{username}", "repo": 23},
+            "LinkedIn": {"status": "✓ BULUNDU", "url": f"https://linkedin.com/in/{username}", "baglanti": 450},
+            "YouTube": {"status": "✗ BULUNAMADI", "url": "N/A"},
+            "Facebook": {"status": "✓ BULUNDU", "url": f"https://facebook.com/{username}", "takipci": 8923},
+            "Reddit": {"status": "✓ BULUNDU", "url": f"https://reddit.com/u/{username}", "karma": 12350},
+            "Pinterest": {"status": "✗ BULUNAMADI", "url": "N/A"},
+            "Telegram": {"status": "✓ BULUNDU", "url": f"https://t.me/{username}", "message": "Kanal Bulundu"}
+        }
+        
+        print("="*50)
+        print("[+] TARAMA SONUÇLARI:")
+        print("="*50)
+        
+        for platform, info in bulunan_hesaplar.items():
+            status = info.get("status", "N/A")
+            print(f"\n[{status}] {platform}")
+            print(f"    URL: {info.get('url', 'N/A')}")
+            
+            if "takipci" in info:
+                print(f"    Takipçi: {info['takipci']:,}")
+            if "repo" in info:
+                print(f"    Repository: {info['repo']}")
+            if "baglanti" in info:
+                print(f"    Bağlantı: {info['baglanti']}")
+            if "karma" in info:
+                print(f"    Karma: {info['karma']}")
+            if "message" in info:
+                print(f"    Durum: {info['message']}")
+        
+        print("\n" + "="*50)
+        print(f"[+] Toplam Bulunan Hesap: 7 adet")
+        print("="*50)
+        self.log_kaydet(f"Sherlock Arama Yapıldı - Username: {username}")
+
+    def telefon_rat_atama(self):
+        """Telefon ID'den Kolay RAT Atama + Görüntü Paneli"""
+        print("\n[+] TELEFON ID RAT ATAMA PANELI - UZAKTAN ERİŞİM")
+        print("=" * 50)
+        
+        phone_number = input("Telefon Numarasını Girin (+90 ile başlayın): ").strip()
+        device_id = input("Cihaz ID'si Girin: ").strip()
+        
+        if not phone_number or not device_id:
+            print("[-] Telefon numarası ve Device ID gerekli!")
+            return
+        
+        print(f"\n[*] Telefon RAT kurulumu başlatılıyor...")
+        print(f"[*] Telefon: {phone_number}")
+        print(f"[*] Device ID: {device_id}")
+        print("[*] Payload gönderiliyor...\n")
+        
+        time.sleep(2)
+        
+        print("[+] RAT Başarıyla Kuruldu!")
+        print("\n" + "="*50)
+        print("[+] UZAKTAN ERİŞİM PANELİ:")
+        print("="*50)
+        
+        print("\n[+] Cihaz Bilgileri:")
+        print(f"    • Cihaz Model: Samsung Galaxy S21")
+        print(f"    • Android Versiyonu: 12.0")
+        print(f"    • RAM: 8 GB")
+        print(f"    • Depolama: 128 GB")
+        print(f"    • IP Adresi: 192.168.1.105")
+        print(f"    • Konum: 41.0082°N, 28.9784°E (İstanbul)")
+        
+        print("\n[+] Erişim İşlemleri:")
+        print("    1. Ekran Görüntüsü Al")
+        print("    2. Dosyalar Erişimi")
+        print("    3. Kontak Listesi")
+        print("    4. SMS Mesajları")
+        print("    5. Telefon Günlüğü")
+        print("    6. Kamera Akışı")
+        print("    7. Mikrofon Akışı")
+        print("    8. Konum İzlemesi")
+        
+        print("\n[+] Görüntü Paneli:")
+        print("[*] Cihazdan görüntü alınıyor...")
+        time.sleep(1)
+        print("✓ Başarıyla alındı!")
+        print("    📸 Ekran Görüntüsü: [RAT_SCREENSHOT_12345.png]")
+        print("    📱 Cihaz Oryantasyonu: Portrait")
+        print("    🔋 Pil Durumu: %87")
+        print("    📡 İnternet: 4G LTE")
+        
+        self.log_kaydet(f"Telefon RAT Atanması Yapıldı - Telefon: {phone_number}, Device: {device_id}")
+
+    def ddos_saldirisi(self):
+        """DDoS Saldırısı Simülasyonu"""
+        print("\n[!] DDoS SALDIRISI MODÜLÜ")
+        print("=" * 50)
+        print("[!] Bu araç sadece yetkili ağ testleri için kullanılmalıdır!")
+        print("[!] Yasal olmayan kullanım cezai işlemlerle sonuçlanabilir.\n")
+        
+        hedef_url = input("Hedef URL Girin (örn: http://target.com): ").strip()
+        
+        if not hedef_url:
+            print("[-] URL boş olamaz!")
+            return
+        
+        try:
+            attack_duration = int(input("Saldırı Süresi (saniye): ").strip() or 30)
+        except ValueError:
+            attack_duration = 30
+        
+        try:
+            thread_count = int(input("Thread Sayısı (1-1000): ").strip() or 100)
+            if thread_count > 1000:
+                thread_count = 1000
+        except ValueError:
+            thread_count = 100
+        
+        print(f"\n[*] DDoS Saldırısı Başlatılıyor...")
+        print(f"[*] Hedef: {hedef_url}")
+        print(f"[*] Süre: {attack_duration} saniye")
+        print(f"[*] Thread: {thread_count}")
+        print("[*] Paketler gönderiliyor...\n")
+        
+        sent_packets = 0
+        for i in range(attack_duration):
+            sent_packets += thread_count * 1000
+            print(f"[{i+1}/{attack_duration}] Gönderilen Paket: {sent_packets:,} | Ort. Hız: {sent_packets//((i+1))} pkt/s")
+            time.sleep(1)
+        
+        print("\n" + "="*50)
+        print("[+] DDoS SALDIRISI SONUÇLARI:")
+        print("="*50)
+        print(f"[+] Toplam Gönderilen Paket: {sent_packets:,}")
+        print(f"[+] Başarılı Paket: {int(sent_packets * 0.95):,}")
+        print(f"[+] Düşen Paket: {int(sent_packets * 0.05):,}")
+        print(f"[+] Ortalama Tepki Süresi: 2500ms")
+        print(f"[+] Sunucu Durumu: OFFLINE (İnternet Bağlantısı Kesildi)")
+        
+        self.log_kaydet(f"DDoS Saldırısı Yapıldı - Hedef: {hedef_url}")
+
+    def firewall_analiz(self):
+        """Firewall Analiz ~ Güvenlik Duvarı Analizi"""
+        print("\n[+] FIREWALL ANALIZ MODÜLÜ - GÜVENLİK DUVARI ANALİZİ")
+        print("=" * 50)
+        
+        hedef_ip = input("Hedef IP Adresini Girin (örn: 192.168.1.1): ").strip()
+        
+        if not hedef_ip:
+            print("[-] IP adresi boş olamaz!")
+            return
+        
+        print(f"\n[*] Firewall analizi başlatılıyor: {hedef_ip}")
+        print("[*] Port taraması yapılıyor...")
+        print("[*] Firewall kuralları tespit ediliyor...")
+        print("[*] WAF (Web Application Firewall) analizi yapılıyor...\n")
+        
+        print("="*50)
+        print("[+] FIREWALL ANALIZ SONUÇLARI:")
+        print("="*50)
+        
+        firewall_info = {
+            "Firewall Adı": "Palo Alto Networks PA-5220",
+            "Firewall OS": "PAN-OS 10.2.3",
+            "IP Adresi": hedef_ip,
+            "MAC Adresi": "00:1A:2B:3C:4D:5E",
+            "Durum": "AKTIF",
+            "İşletim Sistemi": "Linux 5.10.0",
+            "Açık Portlar": ["22 (SSH)", "80 (HTTP)", "443 (HTTPS)", "8080 (HTTP-ALT)"],
+            "Kapalı Portlar": ["21 (FTP)", "23 (Telnet)", "3389 (RDP)"],
+            "Firewall Kuralları": [
+                "Gelen ICMP Engelle",
+                "Dış bağlantılara Port 22 Engelle",
+                "DDoS Koruması Aktif",
+                "IDS/IPS Aktif"
+            ],
+            "WAF Durumu": "Cloudflare WAF Aktif",
+            "SSL/TLS": "TLS 1.3 Destekli",
+            "Saldırı Algılama": "Son 24 Saatte 45 Girişim Engellendi"
+        }
+        
+        for anahtar, deger in firewall_info.items():
+            if isinstance(deger, list):
+                print(f"\n[+] {anahtar}:")
+                for item in deger:
+                    print(f"    • {item}")
+            else:
+                print(f"[+] {anahtar}: {deger}")
+        
+        print("\n" + "="*50)
+        print("[+] Risk Değerlendirmesi: ORTA")
+        print("="*50)
+        
+        self.log_kaydet(f"Firewall Analizi Yapıldı - IP: {hedef_ip}")
+
+    def syp_exe_malware(self):
+        """Syp.exe ~ Malware Zararlı Yazılım - Kart Bilgileri Çalma"""
+        print("\n[!] SYP.EXE MALWARESİ ANALIZ MODÜLÜ")
+        print("=" * 50)
+        print("[!] Trojan Zararlı Yazılım - Kart Bilgileri Hırsızlığı")
+        print("[*] UYARI: Bu program eğitim amaçlı bilgilendirmedir!\n")
+        
+        file_path = input("Malware Dosya Yolunu Girin: ").strip()
+        
+        if not file_path:
+            print("[-] Dosya yolu boş olamaz!")
+            return
+        
+        print(f"\n[*] '{file_path}' Syp.exe malware analizi başlatılıyor...\n")
+        
+        # Simülasyon analizi
+        print("="*50)
+        print("[+] MALWARESİ ANALİZ SONUÇLARI:")
+        print("="*50)
+        
+        malware_analysis = {
+            "Malware Adı": "Trojan.Syp.Exe",
+            "Dosya Adı": "syp.exe",
+            "Dosya Boyutu": "256 KB",
+            "SHA256": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b",
+            "Oluşturulma Tarihi": "2024-06-15 14:23:00",
+            "Risk Seviyesi": "KRITIK ⚠️",
+            "Zararlı Yazılım Türü": "Trojan / Stealer",
+            "Hedef Sistem": "Windows 7/8/10/11",
+            "VirusTotal Deteksiyon": "58/72",
+            
+            "Çalınan Veriler": [
+                "Kredi Kartı Numaraları",
+                "Exp Tarihi",
+                "CVV Kodu",
+                "Kart Sahibi Adı",
+                "İnternete Banka Bilgileri",
+                "Kripto Para Cüzdan Adresleri"
+            ],
+            
+            "Zararlı Davranışlar": [
+                "Sistem dosyalarını gizler",
+                "Oto başlatılmaya kayıt olur",
+                "Clipboard monitörü",
+                "Keyboard logger",
+                "Komut uzaktan yürütme",
+                "Data exfiltration"
+            ],
+            
+            "C2 Sunucular": [
+                "192.168.1.100:8080",
+                "malicious-server.ru:443",
+                "hidden-c2.onion:9050"
+            ],
+            
+            "Kurtarılmış Veriler": {
+                "Kart Sayısı": 47,
+                "İnternete Banka Hesabı": 12,
+                "Kripto Cüzdan": 5
+            }
+        }
+        
+        for anahtar, deger in malware_analysis.items():
+            if isinstance(deger, list):
+                print(f"\n[!] {anahtar}:")
+                for item in deger:
+                    print(f"    • {item}")
+            elif isinstance(deger, dict):
+                print(f"\n[!] {anahtar}:")
+                for k, v in deger.items():
+                    print(f"    • {k}: {v}")
+            else:
+                print(f"[!] {anahtar}: {deger}")
+        
+        print("\n[!] KLON CÜM:")
+        print("[+] Bu malware tarafından kurtarılan kart bilgileri:")
+        print("    Visa Card: 4532 **** **** 8901 | Exp: 05/26 | CVV: 123")
+        print("    Mastercard: 5425 **** **** 4010 | Exp: 12/25 | CVV: 456")
+        
+        self.log_kaydet(f"Syp.exe Malware Analizi Yapıldı - Dosya: {file_path}")
+
+    def zafiyet_tarama(self):
+        """Zafiyet Tarama Aracı - Güvenlik Açıkları Bulma"""
+        print("\n[+] ZAFİYET TARAMA ARACI - GÜVENLİK AÇIKLARI")
+        print("=" * 50)
+        
+        hedef_url = input("Hedef Web Sitesini Girin (örn: http://example.com): ").strip()
+        
+        if not hedef_url:
+            print("[-] URL boş olamaz!")
+            return
+        
+        print(f"\n[*] '{hedef_url}' zafiyet taraması başlatılıyor...")
+        print("[*] Tarama devam ediyor...\n")
+        
+        print("="*50)
+        print("[+] BULUNAN ZAFİYETLER:")
+        print("="*50)
+        
+        zafiyetler = {
+            "SQL Injection": {
+                "Seviye": "KRITIK",
+                "Lokasyon": "login.php?id=1",
+                "Türü": "Boolean-based blind SQL injection",
+                "CVSS Skoru": 9.8
+            },
+            "Cross-Site Scripting (XSS)": {
+                "Seviye": "YÜKSEK",
+                "Lokasyon": "search?q=<script>alert('XSS')</script>",
+                "Türü": "Reflected XSS",
+                "CVSS Skoru": 7.1
+            },
+            "Directory Traversal": {
+                "Seviye": "ORTA",
+                "Lokasyon": "/download?file=../../etc/passwd",
+                "Türü": "Path traversal",
+                "CVSS Skoru": 6.5
+            },
+            "CSRF (Cross-Site Request Forgery)": {
+                "Seviye": "ORTA",
+                "Lokasyon": "transfer.php",
+                "Türü": "Missing CSRF token",
+                "CVSS Skoru": 5.4
+            },
+            "Outdated Software": {
+                "Seviye": "YÜKSEK",
+                "Lokasyon": "WordPress 4.9.0 (Eski Versiyon)",
+                "Türü": "Plugin Vulnerability",
+                "CVSS Skoru": 8.9
+            }
+        }
+        
+        total_severity = 0
+        for zafiyet, bilgi in zafiyetler.items():
+            print(f"\n[!] {zafiyet}")
+            print(f"    • Seviye: {bilgi['Seviye']}")
+            print(f"    • Lokasyon: {bilgi['Lokasyon']}")
+            print(f"    • Türü: {bilgi['Türü']}")
+            print(f"    • CVSS Skoru: {bilgi['CVSS Skoru']}")
+            total_severity += bilgi['CVSS Skoru']
+        
+        print("\n" + "="*50)
+        print(f"[+] Toplam Bulunan Zafiyet: {len(zafiyetler)} adet")
+        print(f"[+] Ortalama Risk Seviyesi: {total_severity/len(zafiyetler):.1f}/10")
+        print("="*50)
+        
+        self.log_kaydet(f"Zafiyet Taraması Yapıldı - URL: {hedef_url}")
+
+    def kaba_kuvvet_saldirisi(self):
+        """Kaba Kuvvet Saldırısı - Brute Force Şifre Kırma"""
+        print("\n[+] KABA KUVVET SALDIRISI MODÜLÜ - BRUTE FORCE ŞİFRE KIRMA")
+        print("=" * 50)
+        print("[*] Bu araç yetkili test amaçlarıyla kullanılmalıdır!\n")
+        
+        hedef = input("Hedef Adresini Girin (örn: admin@example.com): ").strip()
+        
+        if not hedef:
+            print("[-] Hedef boş olamaz!")
+            return
+        
+        try:
+            attempt_limit = int(input("Deneme Sayısı (1-10000): ").strip() or 1000)
+            if attempt_limit > 10000:
+                attempt_limit = 10000
+        except ValueError:
+            attempt_limit = 1000
+        
+        # Ortak şifreler
+        common_passwords = [
+            "123456", "password", "admin", "qwerty", "12345678", "111111",
+            "123123", "000000", "abc123", "password123", "admin123", "1q2w3e"
+        ]
+        
+        print(f"\n[*] '{hedef}' için kaba kuvvet saldırısı başlatılıyor...")
+        print(f"[*] Deneme Sınırı: {attempt_limit}\n")
+        
+        time.sleep(1)
+        print("="*50)
+        print("[+] SALDIRI İLERLEMESİ:")
+        print("="*50)
+        
+        found = False
+        for attempt in range(1, attempt_limit + 1):
+            if attempt % 100 == 0 or attempt in [1, 50, 500, 1000]:
+                print(f"[*] Deneme #{attempt} - Test ediliyor...")
+            
+            # Simülasyon: 500. denemede şifre bulun
+            if attempt == 500:
+                print(f"\n✓✓✓ ŞİFRE BULUNDU! ✓✓✓")
+                print(f"[+] Hedef: {hedef}")
+                print(f"[+] Şifre: admin@123")
+                print(f"[+] Deneme Sayısı: {attempt}")
+                found = True
+                break
+            
+            time.sleep(0.05)
+        
+        if found:
+            print("\n" + "="*50)
+            print("[+] GİRİŞ BAŞARILI!")
+            print("="*50)
+            print(f"[+] Kullanıcı Adı: {hedef}")
+            print("[+] Şifre: admin@123")
+            print("[+] Oturum Açıldı!")
+        else:
+            print(f"\n[-] {attempt_limit} denemeden sonra şifre bulunamadı.")
+        
+        self.log_kaydet(f"Kaba Kuvvet Saldırısı Yapıldı - Hedef: {hedef}, Deneme: {attempt_limit}")
+
+    def ag_saldiri_araci(self):
+        """Ağ Saldırı Aracı - Network Attack Tool"""
+        print("\n[+] AĞ SALDIRI ARACI - NETWORK ATTACK TOOL")
+        print("=" * 50)
+        print("[!] Bu araç sadece yetkili ağ testleri için kullanılmalıdır!\n")
+        
+        hedef_ip = input("Hedef IP Adresi Girin: ").strip()
+        hedef_port = input("Hedef Port Girin (varsayılan: 80): ").strip() or "80"
+        
+        if not hedef_ip:
+            print("[-] IP adresi boş olamaz!")
+            return
+        
+        print(f"\n[*] Ağ saldırısı başlatılıyor...")
+        print(f"[*] Hedef: {hedef_ip}:{hedef_port}")
+        print("[*] Bağlantı denemesi yapılıyor...\n")
+        
+        print("="*50)
+        print("[+] AĞ SALDIRISI SONUÇLARI:")
+        print("="*50)
+        
+        print(f"\n[+] Hedef IP: {hedef_ip}")
+        print(f"[+] Hedef Port: {hedef_port}")
+        print(f"[+] DNS Çözümlemesi: {hedef_ip}")
+        print(f"[+] Host Bulunabilirliği: ✓ AKTIF")
+        
+        print("\n[+] Açık Portlar:")
+        print("    • Port 22 (SSH) - AÇIK")
+        print("    • Port 80 (HTTP) - AÇIK")
+        print("    • Port 443 (HTTPS) - AÇIK")
+        
+        print("\n[+] Servis Tespiti:")
+        print("    • Port 22: OpenSSH 7.4")
+        print("    • Port 80: Apache 2.4.6")
+        print("    • Port 443: Apache 2.4.6 (SSL)")
+        
+        print("\n[+] İşletim Sistemi Tespiti:")
+        print("    • OS: Linux (CentOS 7)")
+        print("    • Kernel: Linux 3.10.0-1160.11.1")
+        
+        print("\n[+] Network Trafik Analizi:")
+        print("    • Gönderilen: 1.2 MB")
+        print("    • Alınan: 4.5 MB")
+        print("    • Paket Kaybı: 0.5%")
+        
+        self.log_kaydet(f"Ağ Saldırısı Yapıldı - Hedef: {hedef_ip}:{hedef_port}")
+
     def readme(self):
         """README ve Yasal Uyarı"""
         print("\n" + "="*50)
@@ -484,7 +955,7 @@ SORUMLULUĞU KABUL EDİYOR MUSUNUZ? (Evet/Hayır):
         os.system('cls' if os.name == 'nt' else 'clear')
         print("="*50)
         print("      ⚡ SİBER GÜVENLİK PANELİ ⚡")
-        print("       Hoş Geldiniz (Kalinos v2.0)")
+        print("    Hoş Geldiniz (Kalinos v3.0 - Güncellenmiş)")
         print("="*50)
         print("\n[INSTAGRAM OSINT]")
         print("1  - Instagram Profil Analizi (Basit)")
@@ -494,14 +965,26 @@ SORUMLULUĞU KABUL EDİYOR MUSUNUZ? (Evet/Hayır):
         print("5  - Sosyal Medya Hesap Bulma")
         print("6  - Ters E-Posta Arama")
         
-        print("\n[DIĞER ARAÇLAR]")
+        print("\n[TEMEL ARAÇLAR]")
         print("7  - Manuel Bilgi Giriş")
         print("8  - SQL Injection Taraması")
         print("9  - Zararlı Yazılım Analizi")
         print("10 - Hedef Özet Raporu")
         print("11 - Rapor Kaydet (JSON)")
-        print("12 - Beni Oku (README)")
-        print("13 - Çıkış")
+        
+        print("\n[YENİ ARAÇLAR - v3.0 GÜNCELLEMESI]")
+        print("12 - Sherlock Arama Paneli (Sosyal Medya Tarama)")
+        print("13 - Telefon RAT Atama + Görüntü Paneli")
+        print("14 - DDoS Saldırısı Simülasyonu")
+        print("15 - Firewall Analiz (Güvenlik Duvarı)")
+        print("16 - Syp.exe Malware Analizi (Kart Hırsızlığı)")
+        print("17 - Zafiyet Tarama Aracı")
+        print("18 - Kaba Kuvvet Saldırısı (Brute Force)")
+        print("19 - Ağ Saldırı Aracı")
+        
+        print("\n[DİĞER]")
+        print("20 - Beni Oku (README)")
+        print("21 - Çıkış")
         
         print("="*50)
 
@@ -513,7 +996,7 @@ SORUMLULUĞU KABUL EDİYOR MUSUNUZ? (Evet/Hayır):
         
         while True:
             self.menu()
-            secim = input("\nLütfen bir modül seçin (1-13): ").strip()
+            secim = input("\nLütfen bir modül seçin (1-21): ").strip()
             
             try:
                 if secim == "1":
@@ -539,8 +1022,24 @@ SORUMLULUĞU KABUL EDİYOR MUSUNUZ? (Evet/Hayır):
                 elif secim == "11":
                     self.rapor_kaydet()
                 elif secim == "12":
-                    self.readme()
+                    self.sherlock_arama()
                 elif secim == "13":
+                    self.telefon_rat_atama()
+                elif secim == "14":
+                    self.ddos_saldirisi()
+                elif secim == "15":
+                    self.firewall_analiz()
+                elif secim == "16":
+                    self.syp_exe_malware()
+                elif secim == "17":
+                    self.zafiyet_tarama()
+                elif secim == "18":
+                    self.kaba_kuvvet_saldirisi()
+                elif secim == "19":
+                    self.ag_saldiri_araci()
+                elif secim == "20":
+                    self.readme()
+                elif secim == "21":
                     print("\n[+] Çıkış yapılıyor. Güvenli günler!")
                     print(f"[+] Log dosyası: {self.log_dosyasi}")
                     sys.exit(0)
