@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Bu dosya, savunma ve eğitim amaçlı 100 adet siber güvenlik aracının
+# yalnızca isimlerini ve kısa, etik/defansif açıklamalarını içerir.
+# Hiçbir araç için kötüye kullanım talimatı, exploit veya adım adım yönerge içermez.
+
+TOOLS = [
+    {"name": "Nmap", "description": "Ağ keşfi ve port taraması; savunma için ağ envanteri ve beklenmedik servis tespiti."},
+    {"name": "Masscan", "description": "Yüksek hızlı ağ tarayıcı; büyük ağlarda envanter amaçlı güvenli tarama (korumalı ortamlarda)."},
+    {"name": "Wireshark", "description": "Paket yakalama ve analiz; ağ trafiği inceleme ve anormallik tespiti için kullanılır."},
+    {"name": "Tcpdump", "description": "Komut satırı paket yakalama aracı; olay müdahalesinde hızlı trafik incelemesi."},
+    {"name": "Suricata", "description": "Ağ IDS/IPS: zafiyetleri ve kötü amaçlı trafiği tespit etmek için imza ve anomaly desteği."},
+    {"name": "Snort", "description": "Geleneksel IDS/IPS çözümü; ağ tabanlı tehdit tespiti ve uyarılar için kullanılır."},
+    {"name": "Zeek (Bro)", "description": "Ağ güvenlik izleme; zengin protokol analizi ve olay çıkarımı sağlar."},
+    {"name": "OpenVAS (Greenbone)", "description": "Açık kaynak zafiyet tarayıcısı; savunma odaklı zafiyet yönetimi için raporlar üretir."},
+    {"name": "Nessus", "description": "Ticari zafiyet değerlendirme aracı; kurumlarda düzenli tarama ve risk önceliklendirmesi için kullanılır."},
+    {"name": "Nikto", "description": "Web sunucusu zafiyet tarayıcısı; savunma amaçlı keşif için güvenlik açığı göstergeleri üretir."},
+    {"name": "OWASP ZAP", "description": "Web uygulama güvenlik testi aracı; savunma ekipleri için otomatik güvenlik taramaları ve bulguların doğrulanması için kullanılır."},
+    {"name": "Burp Suite (Community)", "description": "Web uygulama analiz aracı; savunma ekipleri için bulguların doğrulanması ve raporlanması amaçlı kullanılır."},
+    {"name": "Lynis", "description": "Linux/Unix güvenlik denetim aracı; konfigürasyon sertleştirme ve öneriler sağlar."},
+    {"name": "OSSEC", "description": "Host tabanlı IDS ve log analiz; dosya bütünlüğü, log korelasyonu ve uyarılar."},
+    {"name": "Wazuh", "description": "OSSEC tabanlı genişletilmiş HIDS ve merkezi yönetim; uyumluluk ve güvenlik izlemesi için."},
+    {"name": "Fail2ban", "description": "Brute-force tespiti ve geçici engelleme; SSH/servis saldırılarını azaltmaya yardımcı olur."},
+    {"name": "ModSecurity", "description": "Web uygulama güvenlik duvarı (WAF); uygulama katmanı saldırılarını engelleme ve kaydetme."},
+    {"name": "ClamAV", "description": "Açık kaynak antivirüs motoru; kötü amaçlı yazılım taraması ve tespit için kullanılır."},
+    {"name": "Rkhunter", "description": "Rootkit tespit aracı; bilinen rootkit belirtimlerini kontrol eder."},
+    {"name": "Chkrootkit", "description": "Sistem üzerinde rootkit belirtilerini arayan basit bir tarayıcı."},
+    {"name": "AIDE", "description": "Dosya bütünlüğü doğrulama aracı; değişikliklerin tespiti ve günlüklenmesi için."},
+    {"name": "Tripwire (Açık kaynak)", "description": "Dosya bütünlüğü ve konfigürasyon değişikliklerini izleme aracı."},
+    {"name": "auditd", "description": "Linux denetim altyapısı; sistem çağrıları ve güvenlik olaylarının kaydı için."},
+    {"name": "SELinux (tools)", "description": "Zorunlu erişim kontrolü (MAC) sağlayarak süreç ve kaynak sınırlandırması."},
+    {"name": "AppArmor", "description": "Alternatif MAC sistemi; uygulamaların yetkilerini kısıtlamak için profil tabanlı kontrol."},
+    {"name": "Sysdig", "description": "Sistem çağrıları ve konteyner etkinliklerini izleme; olay incelemesi ve forensics için."},
+    {"name": "Falco", "description": "Runtime güvenlik izleme; container ve host olayları için kural tabanlı uyarılar."},
+    {"name": "Prometheus", "description": "Zaman serisi izleme; güvenlik metrikleri toplayıp alarm kurmak için kullanılır."},
+    {"name": "Grafana", "description": "Grafik ve dashboard aracı; güvenlik ve izleme verilerini görselleştirmek için."},
+    {"name": "ELK Stack (Elasticsearch, Logstash, Kibana)", "description": "Merkezi log toplama, arama ve görselleştirme; olay korelasyonu ve analiz için."},
+    {"name": "Graylog", "description": "Log yönetimi çözümü; merkezi log toplama ve uyarı oluşturma için kullanılır."},
+    {"name": "Splunk (Light mention)", "description": "Gelişmiş SIEM ve log analizi platformu; kurumsal güvenlik izleme ve soruşturma için."},
+    {"name": "TheHive", "description": "Olay müdahalesi platformu; vaka yönetimi ve ekip koordinasyonu için."},
+    {"name": "Cortex", "description": "TheHive ile entegre analiz ve otomasyon araçları; IoC ve örnek analizleri için."},
+    {"name": "MISP", "description": "Tehdit istihbaratı paylaşım platformu; IoC paylaşımı ve tehdit bilgisinin merkezi yönetimi."},
+    {"name": "OpenCTI", "description": "Tehdit istihbaratı yönetimi; zengin modelleme ve entegrasyon için."},
+    {"name": "Trivy", "description": "Konteyner ve imaj güvenlik tarayıcısı; bilinen zafiyetlerin tespiti için."},
+    {"name": "Clair", "description": "Konteyner görüntüsü zafiyet analizi; imajlarda CVE tespiti için kullanılır."},
+    {"name": "Anchore Engine", "description": "Konteyner imaj politikası ve zafiyet taraması; CI/CD entegrasyonuna uygun."},
+    {"name": "Grype", "description": "Konteyner/artefakt zafiyet tarayıcısı; hızlı CVE raporlaması için."},
+    {"name": "kube-bench", "description": "Kubernetes kümeleri için CIS benchmark denetimleri; sertleştirme kontrolleri sağlar."},
+    {"name": "kube-hunter", "description": "Kubernetes güvenlik değerlendirmesi aracı; savunma ekipleri tarafından keşif sonrası risk değerlendirmesi için."},
+    {"name": "kubeaudit", "description": "Kubernetes kaynaklarını denetleyerek güvenlik açıkları ve kötü konfigürasyonları raporlar."},
+    {"name": "HashiCorp Vault", "description": "Güvenli gizli yönetimi; anahtar, token ve sırların güvenli saklanması için."},
+    {"name": "GnuPG", "description": "Şifreleme ve imzalama aracı; veri bütünlüğü ve gizlilik kontrolleri için."},
+    {"name": "Keycloak", "description": "Açık kaynak kimlik ve erişim yönetimi; merkezi kimlik doğrulama/SSO sağlar."},
+    {"name": "Certbot (Let's Encrypt)", "description": "Otomatik TLS sertifika yönetimi; HTTPS kullanımını kolaylaştırır."},
+    {"name": "OpenSSL", "description": "Kriptografi ve TLS araçları; sertifika doğrulama ve kripto sağlık kontrolleri için."},
+    {"name": "SSLyze", "description": "TLS yapılandırma analizi; sunucu TLS yapılandırmalarındaki zayıflıkları tespit eder."},
+    {"name": "cURL", "description": "Ağ istekleri için araç; servis kontrolü ve güvenlik doğrulamaları sırasında kullanılır."},
+    {"name": "Netdata", "description": "Gerçek zamanlı performans ve sağlık izleme; güvenlik olaylarının performans göstergeleri için."},
+    {"name": "Nagios", "description": "Altyapı izleme; servis ve host durumlarını takip ederek güvenlik olaylarına erken uyarı sağlar."},
+    {"name": "Zabbix", "description": "Ağ ve uygulama izleme; uyarı ve trend analizi için kullanılabilir."},
+    {"name": "osquery", "description": "SQL benzeri sorgularla uç nokta görünürlüğü sağlar; envanter ve anomali keşfi için."},
+    {"name": "Velociraptor", "description": "Uç nokta telemetri ve adli analiz platformu; olay müdahalesinde güçlü sorgulama yetenekleri."},
+    {"name": "GRR Rapid Response", "description": "Uç nokta adli analiz ve uzaktan müdahale; büyük ölçekli olay müdahalesi için."},
+    {"name": "Autopsy", "description": "Dijital adli analiz arayüzü; dosya sistemleri ve görüntüler üzerinde inceleme yapar."},
+    {"name": "Sleuth Kit", "description": "Adli analiz için komuta satırı kütüphaneleri ve araçlar; veri kurtarma ve delil toplama için."},
+    {"name": "Volatility", "description": "Bellek adli analizi; bellek görüntülerinden IoC ve kötü amaçlı süreç tespiti."},
+    {"name": "Bulk Extractor", "description": "Dijital görüntülerden toplu veri çıkarımı; IoC ve yapılandırma verisi elde etmek için."},
+    {"name": "Scalpel", "description": "Dosya carve aracı; silinmiş verilerin kurtarılması ve adli analiz için."},
+    {"name": "Foremost", "description": "Dosya kurtarma ve carve etme; adli verilerin çıkartılması için kullanılır."},
+    {"name": "Plaso (log2timeline)", "description": "Zaman çizelgesi oluşturma aracı; olay korelasyonu ve olay zamansal analizi için."},
+    {"name": "Filebeat", "description": "Küçük hafif log gönderici; merkezi log sistemlerine veri iletmek için."},
+    {"name": "Packetbeat", "description": "Ağ trafiği metriklerini toplayan Beat; uygulama protokollerini izlemede kullanılır."},
+    {"name": "Auditbeat", "description": "Host davranışı ve uyumluluk için Beat; süreç, dosya ve kullanıcı aktivitelerini toplar."},
+    {"name": "Ansible", "description": "Konfigürasyon yönetimi ve otomasyon; güvenlik yamalarının dağıtımı ve konfigürasyon sertleştirme için."},
+    {"name": "Puppet", "description": "Konfigürasyon yönetimi aracı; tutarlı güvenlik konfigürasyonları için."},
+    {"name": "Chef", "description": "Altyapı otomasyonu; güvenlik politikalarının otomatik uygulanması için."},
+    {"name": "SaltStack", "description": "Uzaktan yürütme ve konfigürasyon yönetimi; hızlı müdahale ve düzeltme işlemleri için."},
+    {"name": "OpenSCAP", "description": "Sertleştirme ve uyumluluk denetimleri; SCAP profilleri üzerinden denetim sağlar."},
+    {"name": "Bandit", "description": "Python kodu için statik güvenlik tarayıcısı; güvenlik açıkları ve zayıf kod örüntülerini bulmaya yardımcı olur."},
+    {"name": "Brakeman", "description": "Ruby on Rails uygulamaları için statik güvenlik analiz aracı."},
+    {"name": "Semgrep", "description": "Hafif, hızlı statik analiz ve güvenlik kuralları yazma aracı; CI entegrasyonuna uygun."},
+    {"name": "TruffleHog", "description": "Git geçmişinde gizli anahtarlar ve hassas bilgi arama; kod deposu gizli sızıntılarını önlemek için."},
+    {"name": "Gitleaks", "description": "Depolarda gizli anahtar tespiti; CI/CD içinde yasa dışı sızıntıları yakalamak için."},
+    {"name": "SonarQube", "description": "Kod kalitesi ve güvenlik açıkları için sürekli analiz platformu."},
+    {"name": "Dependabot", "description": "Bağımlılık güncellemelerini otomatik öneren araç; zafiyetli paketlerin güncellenmesine yardımcı olur."},
+    {"name": "Snyk", "description": "Bağımlılık ve container zafiyet taraması; geliştirme sürecine entegre güvenlik."},
+    {"name": "BorgBackup", "description": "İçerik adresli yedekleme; şifreleme ve sıkıştırma ile güvenli yedekler oluşturur."},
+    {"name": "Restic", "description": "Hafif, güvenli yedekleme aracı; şifreli yedeklerle veri koruma sağlar."},
+    {"name": "Duplicity", "description": "Şifreli yedekleme ve uzak depolama için kullanılan araç."},
+    {"name": "Bacula", "description": "Kurum içi yedekleme, geri yükleme ve doğrulama çözümleri sunan paket."},
+    {"name": "rsync", "description": "Dosya senkronizasyonu ve yedekleme için güvenilir araç; yedekleme prosedürlerinde temel yapıtaşı."},
+    {"name": "iptables / nftables", "description": "Linux tabanlı paket filtreleme ve firewall kuralları; ağdan gelen trafiği kontrol etme."},
+    {"name": "UFW (Uncomplicated Firewall)", "description": "Basit Linux firewall yönetimi; hızlı kurallar ve engelleme için kullanılabilir."},
+    {"name": "pfSense", "description": "Açık kaynak firewall/router dağıtımı; sınır güvenliği ve ağ segmentasyonu için."},
+    {"name": "OpenVPN", "description": "VPN çözümü; güvenli uzak erişim ve site-to-site bağlantılar için."},
+    {"name": "WireGuard", "description": "Modern, hızlı VPN protokolü; basit ve güvenli bağlantılar sağlamak için."},
+    {"name": "StrongSwan", "description": "IPsec tabanlı VPN çözümü; kurumsal bağlantılar için güvenli tünelleme."},
+    {"name": "ntopng", "description": "Ağ trafik analizörü; akış tabanlı analiz ve davranış modelleme için."},
+    {"name": "CIS-CAT", "description": "CIS benchmark'larına göre konfigürasyon değerlendirmesi ve raporlama sağlar."},
+    {"name": "WhatWeb", "description": "Web sunucusu ve uygulama parmakizi; envanter ve savunma amaçlı keşif için kullanılır."},
+    {"name": "YARA", "description": "Dosya ve bellek örnekleri için imza-temelli tespit kuralları yazma ve tarama aracı (savunma amaçlı)."},
+    {"name": "Cuckoo Sandbox", "description": "Şüpheli dosyaların davranış analizi için sandbox; örnek analizi ve raporlama sağlar."},
+    {"name": "Maltrail", "description": "Anormal ağ trafiği ve kötü amaçlı etkinlik algılama için trafik tabanlı izleme."},
+    {"name": "Security Onion", "description": "Ağ güvenlik izleme ve olay müdahalesi dağıtımı; birden çok aracı entegre eden dağıtım."},
+    {"name": "Arkime (Moloch)", "description": "Paket yakalama arşivleme ve indeksleme; ağ trafik aramaları için kullanılır."},
+    {"name": "Rspamd", "description": "E-posta güvenliği; spam ve kötü amaçlı ekleri işaretlemek ve engellemek için hızlı filtreleme çözümleri."},
+]
+
+DISCLAIMER = """
+UYARI / ETIK KULLANIM: Bu dosyadaki araçlar güçlü ve çift taraflı (dual-use) olabilir. Buradaki bilgiler sadece savunma, eğitim ve yetkili güvenlik testleri (ör. kurumunuzun izni, CTF laboratuvarları) için verilmiştir. Kötüye kullanım yasal yaptırımlara ve zarar verici sonuçlara yol açabilir. Her zaman yerel kanunlara, kuruluş politikasına ve etik kurallara uyun.
+"""
+
+LEARNING_RESOURCES = [
+    {"name": "OWASP", "url": "https://owasp.org", "description": "Web uygulama güvenliği kaynakları ve projeleri."},
+    {"name": "VulnHub", "url": "https://www.vulnhub.com/", "description": "Kendi yerel laboratuvarınızda pratik yapabileceğiniz VM'ler (eğitim amaçlı)."},
+    {"name": "TryHackMe", "url": "https://tryhackme.com/", "description": "Güvenli laboratuvar ortamlarında siber güvenlik eğitimi."},
+    {"name": "Hack The Box (HTB)", "url": "https://www.hackthebox.com/", "description": "Öğrenme ve pratik için yasal hack lab ortamı."},
+    {"name": "SANS", "url": "https://www.sans.org/", "description": "Profesyonel eğitimler ve sertifikasyonlar (savunma odaklı içerikler)."},
+]
+
+if __name__ == "__main__":
+    print(f"siber_arac_v2.py — Savunma-odaklı araç listesi ({len(TOOLS)} adet)")
+    for i, t in enumerate(TOOLS, start=1):
+        print(f"{i:03d}. {t['name']}: {t['description']}")
+    print("\n" + DISCLAIMER)
+    print("\nÖğrenme kaynakları:")
+    for r in LEARNING_RESOURCES:
+        print(f"- {r['name']}: {r['url']} — {r['description']}")
