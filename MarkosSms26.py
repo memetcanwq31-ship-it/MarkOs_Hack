@@ -35,11 +35,12 @@ while 1:
     
     # ASCII yeşil logo
     print(Fore.LIGHTGREEN_EX + r"""
-     __  __            _    ___    ____  
-    |  \/  |  __ _  __| |  / _ \  / ___| 
-    | |\/| | / _` |/ _` | | | | | \___ \ 
-    | |  | || (_| | (_| | | |_| |  ___) |
-    |_|  |_| \__,_|\__,_|  \___/  |____/                                              
+     _                                ____  __  __ ____    ____   ___ ____   __   
+    | |    ___  __ _  __ _  ___ _   _/ ___||  \/  / ___|  |___ \ / _ \___ \ / /_  
+    | |   / _ \/ _` |/ _` |/ __| | | \___ \| |\/| \___ \    __) | | | |__) | '_ \ 
+    | |__|  __/ (_| | (_| | (__| |_| |___) | |  | |___) |  / __/| |_| / __/| (_) |
+    |_____\___|\__, |\__,_|\___|\__, |____/|_|  |_|____/  |_____|\___/_____|\___/ 
+               |___/            |___/                                             
 """ + Style.RESET_ALL)
     
     # Alt metin, tek satır, renkler ayrı
@@ -155,4 +156,4 @@ while 1:
         print(Fore.LIGHTRED_EX + "Çıkış yapılıyor...")
         break
 
-#Bu Tool  https://github.com/memetcanwq31-ship-it/MarkOs_Hack.git  Adresine Aittir...
+#Bu Tool https://github.com/memetcanwq31-ship-it/MarkOs_Hack.git Adresine Aittir...
