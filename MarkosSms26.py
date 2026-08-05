@@ -8,14 +8,14 @@ import threading
 system("cls||clear")
 print(Fore.LIGHTGREEN_EX + """                   
 **************************************************
-*               MarkOs v2 - 2026                 *
+*               LegacySMS v2 - 2026              *
 *      Bu program tamamen eğitim amaçlıdır.      *
 *      Tüm sorumluluklar kullanıcıya aittir.     *
 *    Program 10 saniye sonra başlayacaktır...    *
 **************************************************
 """ + Style.RESET_ALL)
 
-# 10 saniyelik geri sayım
+# 5 saniyelik geri sayım
 for i in range(10, 0, -1):
     print(Fore.LIGHTGREEN_EX + f"\rBaşlıyor: {i} saniye ", end="")
     sleep(1)
@@ -28,8 +28,8 @@ for attribute in dir(SendSms):
         if attribute.startswith('__') == False:
             servisler_sms.append(attribute)
 
-# Bu Tool https://github.com/memetcanwq31-ship-it/MarkOs_Hack.git Adresine Aittir...
-
+# Bu Tool https://github.com/s4m3dnotfound/LegacySMS Adresine Aittir...
+            
 while 1:
     system("cls||clear")
     
@@ -39,15 +39,14 @@ while 1:
     |  \/  |  __ _  __| |  / _ \  / ___| 
     | |\/| | / _` |/ _` | | | | | \___ \ 
     | |  | || (_| | (_| | | |_| |  ___) |
-    |_|  |_| \__,_|\__,_|  \___/  |____/ 
-                 MARKOS 2026
+    |_|  |_| \__,_|\__,_|  \___/  |____/                                              
 """ + Style.RESET_ALL)
     
     # Alt metin, tek satır, renkler ayrı
     print(
         f"{Fore.LIGHTGREEN_EX}UYARI: Tamamen Eğitim Amaçlıdır.{Style.RESET_ALL}    "
-        f"{Fore.LIGHTBLUE_EX}Geliştirici: {Style.RESET_ALL}MarkOs    "
-        f"{Fore.LIGHTRED_EX}Güncel Sürüm:{Style.RESET_ALL} MarkOs v2"
+        f"{Fore.LIGHTBLUE_EX}Geliştirici: {Style.RESET_ALL}s4m3dnotfound    "
+        f"{Fore.LIGHTRED_EX}Güncel Sürüm:{Style.RESET_ALL} LegacySMS v2"
     )
     
     print()  
@@ -156,4 +155,4 @@ while 1:
         print(Fore.LIGHTRED_EX + "Çıkış yapılıyor...")
         break
 
-# Bu Tool  https://github.com/memetcanwq31-ship-it/MarkOs_Hack.git  Adresine Aittir...
+#Bu Tool  https://github.com/memetcanwq31-ship-it/MarkOs_Hack.git  Adresine Aittir...
