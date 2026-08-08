@@ -5,7 +5,7 @@
 #  Creator  : @markos39
 #  Calistir : python3 etternetlog_v7.py
 #  Root     : GEREKMEZ (root isteyen arac otomatik sudo kullanir)
-#  Ortam    : Kali / Parrot / Linux / Markos (Python 3.9+)
+#  Ortam    : Kali / Parrot / Markos (Python 3.9+)
 # ============================================================
 import os, sys, time, socket, threading, subprocess, hashlib, json, re
 import random, base64, math, collections, datetime, ipaddress, itertools
