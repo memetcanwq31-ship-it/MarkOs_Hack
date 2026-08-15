@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# Bu Tools Markos İşletim sistemine aittir yetkili kişiler kullanabilir
 """
-OSINT MEGA v7 — MARKOS OSINT (17 ARAÇ + VERİTABANI)
-====================================================
-Tüm sonuçlar CANLI API/HTTP yanıtıdır; simülasyon YOKTUR.
+OSINT MEGA v8 — MARKOS İŞLETİM SİSTEMİ OSINT (17 GERÇEK ARAÇ + VERİTABANI)
+===========================================================================
+Tüm araçlar GERÇEKTİR: her sonuç canlı API/HTTP yanıtıdır, sahte veri yoktur.
 Instagram ID/konum için kendi hesabınızla oturum açılır (menü 17 veya otomatik).
 Tarama geçmişi SQLite veritabanına kaydedilir: ~/.markos_osint.db
 Yalnızca yetkilendirilmiş hedeflerde kullanın.
@@ -108,12 +109,13 @@ UA_LIST = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
     "Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0",
 ]
-UA_REDDIT = "linux:osint-mega:v7 (pentest aracı)"
-IG_UA = ("Instagram 275.0.0.25.100 Android (30/11; 440dpi; 1080x2400; "
+UA_REDDIT = "linux:osint-mega:v8 (gerçek osint aracı)"
+IG_UA = ("Instagram 222.0.0.13.114 Android (30/11; 440dpi; 1080x2400; "
          "OnePlus; KB2000; OnePlus8T; qcom; tr_TR; 497616884)")
 WEB_APP_ID = "936619743392459"
 MOBILE_APP_ID = "124024574287414"
-IG_SIG_KEY = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+# GERÇEK imza anahtarı — Instagram 222.0.0.13.114 (dilame/instagram-private-api'den doğrulanmış)
+IG_SIG_KEY = "9193488027538fd3450b83b7d05286d4ca9599a0f7eeed90d8c85925698a05dc"
 SESSION_FILE = os.path.join(os.path.expanduser("~"), ".markos_ig_session.json")
 
 GH_HDRS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
@@ -1215,11 +1217,11 @@ def shodan_host(ip):
 # ================================================================ BANNER
 def banner():
     line("=")
-    print(GREEN + "         OSINT MEGA v7 — MARKOS OSINT ARACI (17 ARAÇ + VERİTABANI)" + RESET)
-    print(BLUE + "   Tüm sonuçlar CANLI API/HTTP yanıtıdır — simülasyon YOKTUR" + RESET)
+    print(GREEN + "         OSINT MEGA v8 — MARKOS İŞLETİM SİSTEMİ OSINT (17 GERÇEK ARAÇ)" + RESET)
+    print(BLUE + "   Tüm araçlar GERÇEKTİR: canlı API/HTTP sorguları, sahte veri yok" + RESET)
     line("=")
     print(GREEN + "  [ + ] " + BLUE + "Bu Araç OSINT Aracıdır" + RESET)
-    print(BLUE + "  [ * ] " + GREEN + "Bu Araç MarkOs'a Aittir" + RESET)
+    print(BLUE + "  [ * ] " + GREEN + "Bu Araç Markos İşletim sistemine Aittir" + RESET)
     print(GREEN + "  [ ! ] " + BLUE + "Bu Aracı yetkili kişiler kullanabilir" + RESET)
     print(BLUE + "  [ ! ] " + GREEN + "Sorumluluk kullanıcıya aittir" + RESET)
     line("=")
@@ -1856,10 +1858,10 @@ def main():
         try:
             secim = input(BLUE + "\n[?] Seçiminiz: " + RESET).strip()
         except (EOFError, KeyboardInterrupt):
-            print(GREEN + "\n[+] Çıkılıyor. MarkOs OSINT — iyi avlar." + RESET)
+            print(GREEN + "\n[+] Çıkılıyor. Markos İşletim Sistemi OSINT — iyi avlar." + RESET)
             break
         if secim == "0":
-            print(GREEN + "\n[+] Çıkılıyor. MarkOs OSINT — iyi avlar." + RESET)
+            print(GREEN + "\n[+] Çıkılıyor. Markos İşletim Sistemi OSINT — iyi avlar." + RESET)
             break
         elif secim == "1": opt_username()
         elif secim == "2": opt_phone()
@@ -1886,4 +1888,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print(GREEN + "\n[+] Çıkılıyor. MarkOs OSINT — iyi avlar." + RESET)
+        print(GREEN + "\n[+] Çıkılıyor. Markos İşletim Sistemi OSINT — iyi avlar." + RESET)
