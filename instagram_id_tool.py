@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-OSINT MEGA v5 — MARKOS OSINT (16 ARAÇ)
-============================================================
-Sıfır simülasyon: tüm sonuçlar CANLI HTTP/API yanıtıdır.
+OSINT MEGA v7 — MARKOS OSINT (17 ARAÇ + VERİTABANI)
+====================================================
+Tüm sonuçlar CANLI API/HTTP yanıtıdır; simülasyon YOKTUR.
+Instagram ID/konum için kendi hesabınızla oturum açılır (menü 17 veya otomatik).
+Tarama geçmişi SQLite veritabanına kaydedilir: ~/.markos_osint.db
 Yalnızca yetkilendirilmiş hedeflerde kullanın.
 """
 import concurrent.futures as cf
 import datetime as dt
+import getpass
 import gzip
 import hashlib
+import hmac
 import html as H
 import http.client
 import json
@@ -17,6 +21,7 @@ import os
 import random
 import re
 import socket
+import sqlite3
 import ssl
 import sys
 import time
@@ -33,17 +38,83 @@ def ok(msg):   print(GREEN + "[+] " + msg + RESET)
 def hata(msg): print(BLUE + "[-] " + msg + RESET)
 def line(ch="=", n=62): print(GREEN + ch * n + RESET)
 
+# ---------------------------------------------------------------- veritabanı (SQLite)
+DB_PATH = os.path.join(os.path.expanduser("~"), ".markos_osint.db")
+
+def db_init():
+    con = sqlite3.connect(DB_PATH)
+    con.execute("""CREATE TABLE IF NOT EXISTS taramalar (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        arac TEXT NOT NULL,
+        hedef TEXT NOT NULL,
+        sonuc TEXT,
+        zaman TEXT NOT NULL)""")
+    con.execute("""CREATE TABLE IF NOT EXISTS hedefler (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tip TEXT, deger TEXT UNIQUE,
+        ilk_gorulme TEXT, son_gorulme TEXT)""")
+    con.commit()
+    con.close()
+
+def db_kaydet(arac, hedef, sonuc):
+    now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    try:
+        con = sqlite3.connect(DB_PATH, timeout=10)
+        con.execute("INSERT INTO taramalar (arac, hedef, sonuc, zaman) VALUES (?,?,?,?)",
+                    (arac, hedef, json.dumps(sonuc, ensure_ascii=False, default=str), now))
+        con.execute("""INSERT INTO hedefler (tip, deger, ilk_gorulme, son_gorulme)
+                       VALUES (?,?,?,?)
+                       ON CONFLICT(deger) DO UPDATE SET son_gorulme=excluded.son_gorulme""",
+                    (arac, hedef, now, now))
+        con.commit()
+        con.close()
+        return True
+    except Exception as e:
+        hata(f"Veritabanı yazma hatası: {e}")
+        return False
+
+def db_son_kayitlar(n=20):
+    con = sqlite3.connect(DB_PATH)
+    rows = con.execute("SELECT id, arac, hedef, zaman FROM taramalar ORDER BY id DESC LIMIT ?",
+                       (n,)).fetchall()
+    con.close()
+    return rows
+
+def db_hedef_listesi():
+    con = sqlite3.connect(DB_PATH)
+    rows = con.execute("SELECT tip, deger, ilk_gorulme, son_gorulme FROM hedefler "
+                       "ORDER BY son_gorulme DESC LIMIT 100").fetchall()
+    con.close()
+    return rows
+
+def db_ozet():
+    con = sqlite3.connect(DB_PATH)
+    arac = con.execute("SELECT arac, COUNT(*) FROM taramalar GROUP BY arac ORDER BY COUNT(*) DESC").fetchall()
+    top = con.execute("SELECT hedef, COUNT(*) FROM taramalar GROUP BY hedef "
+                      "ORDER BY COUNT(*) DESC LIMIT 5").fetchall()
+    con.close()
+    return arac, top
+
+def db_temizle():
+    con = sqlite3.connect(DB_PATH)
+    con.execute("DELETE FROM taramalar")
+    con.execute("DELETE FROM hedefler")
+    con.commit()
+    con.close()
+
 # ---------------------------------------------------------------- sabitler
 UA_LIST = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
     "Mozilla/5.0 (X11; Linux x86_64; rv:127.0) Gecko/20100101 Firefox/127.0",
 ]
-UA_REDDIT = "linux:osint-mega:v5 (pentest aracı)"
+UA_REDDIT = "linux:osint-mega:v7 (pentest aracı)"
 IG_UA = ("Instagram 275.0.0.25.100 Android (30/11; 440dpi; 1080x2400; "
          "OnePlus; KB2000; OnePlus8T; qcom; tr_TR; 497616884)")
 WEB_APP_ID = "936619743392459"
 MOBILE_APP_ID = "124024574287414"
+IG_SIG_KEY = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+SESSION_FILE = os.path.join(os.path.expanduser("~"), ".markos_ig_session.json")
 
 GH_HDRS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
 if os.environ.get("GH_TOKEN"):
@@ -54,7 +125,7 @@ COMMON_PORTS = [21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 993, 
 
 # ---------------------------------------------------------------- HTTP çekirdeği
 def http_get(url, method="GET", body=None, headers=None, timeout=10, max_redir=4):
-    """Redirect + gzip destekli genel HTTP istemcisi -> (status, headers, body_bytes)"""
+    """Redirect + gzip destekli. set-cookie: TÜM çerezler listeye toplanır (login için kritik)."""
     for _ in range(max_redir + 1):
         p = urlparse(url)
         scheme, host = p.scheme, p.hostname
@@ -76,7 +147,14 @@ def http_get(url, method="GET", body=None, headers=None, timeout=10, max_redir=4
             conn.request(method, path, body=body, headers=hdrs0)
             resp = conn.getresponse()
             data = resp.read()
-            status, rh = resp.status, {k.lower(): v for k, v in resp.getheaders()}
+            status = resp.status
+            rh = {}
+            for k, v in resp.getheaders():
+                kl = k.lower()
+                if kl == "set-cookie":
+                    rh.setdefault("set-cookie", []).append(v)
+                else:
+                    rh[kl] = v
             conn.close()
         except Exception as e:
             return 0, {}, str(e).encode("utf-8", "ignore")
@@ -95,7 +173,6 @@ def http_get(url, method="GET", body=None, headers=None, timeout=10, max_redir=4
 
 
 def api_json(url, headers=None, timeout=12):
-    """JSON API çağrısı -> (dict|None, hata|None)"""
     st, _, data = http_get(url, headers=headers, timeout=timeout)
     if st == 0:
         return None, "ağ hatası"
@@ -110,7 +187,6 @@ def api_json(url, headers=None, timeout=12):
 
 
 def ddg_search(query, n=8):
-    """Canlı DuckDuckGo araması -> [ {title,url} ] veya [{'blocked':True}]"""
     body = urlencode({"q": query, "kl": "tr-tr"})
     st, _, data = http_get("https://html.duckduckgo.com/html/", method="POST", body=body,
                            headers={"Content-Type": "application/x-www-form-urlencoded",
@@ -173,7 +249,6 @@ def email_guesses(first, last, domains):
 
 # ---------------------------------------------------------------- DNS (DoH)
 def dns_query(name, rtype):
-    """Cloudflare DoH üzerinden DNS kaydı sorgusu -> [veri]"""
     rmap = {"A": 1, "AAAA": 28, "MX": 15, "NS": 2, "TXT": 16, "PTR": 12, "SOA": 6}
     j, e = api_json("https://cloudflare-dns.com/dns-query?" + urlencode({"name": name, "type": rtype}),
                     headers={"Accept": "application/dns-json"})
@@ -190,11 +265,11 @@ def ptr_lookup(ip):
     if ":" in ip:
         return "IPv6 PTR atlandı"
     name = ".".join(reversed(ip.split("."))) + ".in-addr.arpa"
-    return dns_query(name, "PTR")
+    recs = dns_query(name, "PTR")
+    return recs[0] if recs else "PTR kaydı yok"
 
 
 def domain_rdap(domain):
-    """RDAP WHOIS — kayıt şirketi, tarihler, nameserver'lar, kayıt sahibi"""
     j, e = api_json("https://rdap.org/domain/" + domain, timeout=15)
     if e or not j:
         return {"hata": e or "kayıt bulunamadı"}
@@ -217,14 +292,10 @@ def domain_rdap(domain):
         vc = ((ent.get("vcardArray") or [None, []])[1]) or []
         rec = {}
         for item in vc:
-            if item[0] == "fn":
-                rec["isim"] = item[3]
-            if item[0] == "org":
-                rec["kurum"] = item[3]
-            if item[0] == "email":
-                rec["email"] = item[3]
-            if item[0] == "tel":
-                rec["telefon"] = item[3]
+            if item[0] == "fn": rec["isim"] = item[3]
+            if item[0] == "org": rec["kurum"] = item[3]
+            if item[0] == "email": rec["email"] = item[3]
+            if item[0] == "tel": rec["telefon"] = item[3]
         if rec:
             ents.append(rec)
     if ents:
@@ -290,9 +361,160 @@ def platform_checks(username, sites, threads=10):
             res[name] = {"durum": durum, "url": url}
     return res
 
-# ================================================================ INSTAGRAM (gerçek ID)
-def ig_fetch_profile(username, sessionid=None, host="www.instagram.com", app_id=WEB_APP_ID, ua=None):
-    path = "/api/v1/users/web_profile_info/?" + urlencode({"username": username, "first": "12"})
+# ================================================================ INSTAGRAM — CANLI OTURUM
+def ig_signed(payload_dict):
+    """Mobil API için HMAC-SHA256 imzalı signed_body (ig_sig_key_version=4)."""
+    payload = json.dumps(payload_dict, separators=(",", ":"))
+    sig = hmac.new(IG_SIG_KEY.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return urlencode({"ig_sig_key_version": "4", "signed_body": sig + "." + payload})
+
+
+def ig_headers(sessionid=None, extra=None):
+    h = {"User-Agent": IG_UA, "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+         "x-ig-app-id": MOBILE_APP_ID, "x-ig-capabilities": "3brTv10=",
+         "x-ig-connection-type": "WIFI", "Accept-Language": "tr-TR, en-US", "Accept-Encoding": "identity"}
+    if sessionid:
+        h["Cookie"] = f"sessionid={sessionid}"
+    if extra:
+        h.update(extra)
+    return h
+
+
+def extract_sessionid(rh):
+    for ck in rh.get("set-cookie", []):
+        for part in ck.split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "sessionid" and v:
+                return v
+    return None
+
+
+def ig_device_register(device):
+    body = ig_signed({"device_id": device["device_id"], "guid": device["guid"],
+                      "phone_id": device["phone_id"], "device_user_agent": IG_UA,
+                      "android_id": device["device_id"].replace("android-", ""),
+                      "timezone_offset": "10800"})
+    st, rh, data = http_get("https://i.instagram.com/api/v1/devices/register/",
+                            method="POST", body=body, headers=ig_headers(), timeout=15)
+    return st
+
+
+def ig_login_attempt(device, username, password):
+    lp = {"phone_id": device["phone_id"], "_csrftoken": "missing", "username": username,
+          "guid": device["guid"], "device_id": device["device_id"], "password": password,
+          "login_attempt_count": "0"}
+    st, rh, data = http_get("https://i.instagram.com/api/v1/accounts/login/",
+                            method="POST", body=ig_signed(lp), headers=ig_headers(), timeout=20)
+    try:
+        j = json.loads(data.decode("utf-8", "ignore"))
+    except Exception:
+        return {"hata": f"parse hatası (HTTP {st})"}
+    if st == 200 and j.get("logged_in_user"):
+        sid = extract_sessionid(rh)
+        if sid:
+            return {"sessionid": sid, "username": username}
+        return {"hata": "giriş oldu ama sessionid çerezi alınamadı"}
+    msg = j.get("message", "bilinmeyen hata")
+    if msg == "challenge_required":
+        return {"hata": "challenge_required — tarayıcıdan bu hesaba girip güvenlik adımını (checkpoint) çözün, sonra tekrar deneyin"}
+    if msg == "two_factor_required":
+        return {"two_factor": True, "identifier": (j.get("two_factor_info") or {}).get("two_factor_identifier"),
+                "device": device}
+    if "bad_password" in str(msg).lower() or st == 400:
+        return {"hata": "şifre hatalı"}
+    return {"hata": f"{msg} (HTTP {st})"}
+
+
+def ig_two_factor(device, username, code, identifier):
+    lp = {"username": username, "two_factor_identifier": identifier,
+          "verification_code": code, "trust_this_device": "1",
+          "guid": device["guid"], "device_id": device["device_id"]}
+    st, rh, data = http_get("https://i.instagram.com/api/v1/accounts/two_factor_login/",
+                            method="POST", body=ig_signed(lp), headers=ig_headers(), timeout=20)
+    try:
+        j = json.loads(data.decode("utf-8", "ignore"))
+    except Exception:
+        return {"hata": f"2FA parse hatası (HTTP {st})"}
+    if st == 200 and j.get("logged_in_user"):
+        sid = extract_sessionid(rh)
+        if sid:
+            return {"sessionid": sid, "username": username}
+    return {"hata": f"2FA başarısız: {j.get('message', 'bilinmiyor')} (HTTP {st})"}
+
+
+def ig_login_flow(username, password):
+    device = build_device_fingerprint()
+    ig_device_register(device)
+    res = ig_login_attempt(device, username, password)
+    if res.get("two_factor"):
+        ok("2FA doğrulaması gerekiyor.")
+        kod = input(BLUE + "[?] Telefonundaki/uygulamadaki 6 haneli kod: " + RESET).strip()
+        if not kod:
+            return {"hata": "kod girilmedi"}
+        return ig_two_factor(device, username, kod, res.get("identifier"))
+    return res
+
+
+def save_ig_session(sessionid, username):
+    with open(SESSION_FILE, "w", encoding="utf-8") as f:
+        json.dump({"sessionid": sessionid, "username": username}, f)
+
+
+def load_ig_session():
+    try:
+        with open(SESSION_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        if d.get("sessionid"):
+            return d
+    except Exception:
+        pass
+    return None
+
+
+def delete_ig_session():
+    try:
+        os.remove(SESSION_FILE)
+    except Exception:
+        pass
+
+
+def ig_session_valid(sessionid):
+    st, _, data = http_get("https://i.instagram.com/api/v1/accounts/current_user/?edit=true",
+                           headers=ig_headers(sessionid), timeout=12)
+    return st == 200 and b'"user"' in data
+
+
+def get_active_session(ask=True):
+    """Kayıtlı oturumu döner; yoksa ve ask=True ise giriş ister."""
+    saved = load_ig_session()
+    if saved and ig_session_valid(saved["sessionid"]):
+        return saved
+    if saved:
+        delete_ig_session()
+        hata("Kayıtlı IG oturumu geçersiz olmuş, silindi.")
+    if ask:
+        cevap = input(BLUE + "[?] IG oturumu yok. Kendi hesabınla giriş yapılsın mı? [e/h]: " + RESET).strip().lower()
+        if cevap == "e":
+            u = input(BLUE + "[?] IG kullanıcı adı: " + RESET).strip()
+            p = getpass.getpass(BLUE + "[?] IG şifre: " + RESET)
+            if not u or not p:
+                hata("Kullanıcı adı/şifre boş.")
+                return None
+            sonuc = ig_login_flow(u, p)
+            if sonuc and sonuc.get("sessionid"):
+                save_ig_session(sonuc["sessionid"], u)
+                ok(f"Giriş başarılı — oturum kaydedildi (kullanıcı: {u})")
+                return sonuc
+            hata(f"Giriş başarısız: {sonuc.get('hata') if sonuc else 'bilinmiyor'}")
+    return None
+
+
+def ig_fetch_profile(username, sessionid=None, after=None, first=12,
+                     host="www.instagram.com", app_id=WEB_APP_ID, ua=None):
+    params = {"username": username, "first": str(first)}
+    if after:
+        params["after"] = after
+    path = "/api/v1/users/web_profile_info/?" + urlencode(params)
     hdrs = {"User-Agent": ua or UA_LIST[0], "Accept": "*/*", "Accept-Encoding": "identity",
             "x-ig-app-id": app_id, "x-requested-with": "XMLHttpRequest",
             "Referer": f"https://www.instagram.com/{username}/"}
@@ -313,8 +535,10 @@ def ig_fetch_profile(username, sessionid=None, host="www.instagram.com", app_id=
     return data, None
 
 
-def ig_scrape_html(username):
+def ig_scrape_html(username, sessionid=None):
     hdrs = {"User-Agent": UA_LIST[0], "Accept-Language": "tr-TR,en-US;q=0.8"}
+    if sessionid:
+        hdrs["Cookie"] = f"sessionid={sessionid}"
     st, _, raw = http_get(f"https://www.instagram.com/{username}/", headers=hdrs, timeout=15)
     if st != 200:
         return None
@@ -328,9 +552,11 @@ def ig_scrape_html(username):
     return None
 
 
-def ig_legacy_a1(username):
-    st, _, raw = http_get(f"https://www.instagram.com/{username}/?__a=1&__d=dis",
-                          headers={"User-Agent": UA_LIST[0], "x-ig-app-id": WEB_APP_ID}, timeout=15)
+def ig_legacy_a1(username, sessionid=None):
+    hdrs = {"User-Agent": UA_LIST[0], "x-ig-app-id": WEB_APP_ID}
+    if sessionid:
+        hdrs["Cookie"] = f"sessionid={sessionid}"
+    st, _, raw = http_get(f"https://www.instagram.com/{username}/?__a=1&__d=dis", headers=hdrs, timeout=15)
     if st == 200:
         try:
             data = json.loads(raw.decode("utf-8", "ignore"))
@@ -344,9 +570,7 @@ def ig_legacy_a1(username):
 
 def ig_usernameinfo(username, sessionid):
     st, _, raw = http_get(f"https://i.instagram.com/api/v1/users/{username}/usernameinfo/",
-                          headers={"User-Agent": IG_UA, "x-ig-app-id": MOBILE_APP_ID,
-                                   "Accept-Encoding": "identity", "Cookie": f"sessionid={sessionid}"},
-                          timeout=15)
+                          headers=ig_headers(sessionid), timeout=15)
     try:
         data = json.loads(raw.decode("utf-8", "ignore"))
         u = data.get("user")
@@ -358,7 +582,7 @@ def ig_usernameinfo(username, sessionid):
 
 
 def ig_get_user_id(username, sessionid=None):
-    """5 yöntemli GERÇEK ID zinciri. İlk başarılı olan döner."""
+    """5 yöntemli GERÇEK ID zinciri — ilk başarılı olan döner."""
     for host, app_id, ua in (("www.instagram.com", WEB_APP_ID, None),
                              ("i.instagram.com", MOBILE_APP_ID, IG_UA)):
         data, err = ig_fetch_profile(username, sessionid, host=host, app_id=app_id, ua=ua)
@@ -366,10 +590,10 @@ def ig_get_user_id(username, sessionid=None):
             u = data["data"]["user"]
             if u.get("id"):
                 return u["id"], {"kaynak": f"web_profile_info ({host})", "profil": u}, None
-    sid = ig_scrape_html(username)
+    sid = ig_scrape_html(username, sessionid)
     if sid:
         return sid, {"kaynak": "profil HTML", "profil": {"id": sid, "username": username}}, None
-    u = ig_legacy_a1(username)
+    u = ig_legacy_a1(username, sessionid)
     if u and u.get("id"):
         return u["id"], {"kaynak": "__a=1", "profil": u}, None
     if sessionid:
@@ -377,7 +601,7 @@ def ig_get_user_id(username, sessionid=None):
         if u and u.get("pk"):
             return u["pk"], {"kaynak": "usernameinfo (mobil API)", "profil": u}, None
     return None, None, {"error": "tüm yöntemler başarısız",
-                        "detail": "Instagram bot koruması (429/302). IG_SESSIONID ile deneyin veya 10-15 dk bekleyin."}
+                        "detail": "Instagram bot koruması. Menü 17 ile kendi hesabınla giriş yap veya 10-15 dk bekleyin."}
 
 
 def normalize_ig_user(u, kaynak):
@@ -393,10 +617,26 @@ def normalize_ig_user(u, kaynak):
             "media_count": (u.get("edge_owner_to_timeline_media") or {}).get("count")}
 
 
+def ig_location_details(loc_id, sessionid):
+    """Konum ID'sinden tam adres/koordinat (mobil API, oturumla)."""
+    if not sessionid or not loc_id:
+        return None
+    st, _, raw = http_get(f"https://i.instagram.com/api/v1/locations/{loc_id}/info/",
+                          headers=ig_headers(sessionid), timeout=12)
+    if st != 200:
+        return None
+    try:
+        j = json.loads(raw.decode("utf-8", "ignore"))
+        return j.get("location")
+    except Exception:
+        return None
+
+
 def ig_timeline_locations(username, sessionid, max_posts=30):
+    """Medya akışını sayfalayarak geotag'ları toplar ve zenginleştirir."""
     edges, after = [], None
     while len(edges) < max_posts:
-        data, err = ig_fetch_profile(username, sessionid)
+        data, err = ig_fetch_profile(username, sessionid, after=after)
         if err or not data:
             break
         m = (data.get("data") or {}).get("user", {}).get("edge_owner_to_timeline_media") or {}
@@ -417,10 +657,28 @@ def ig_timeline_locations(username, sessionid, max_posts=30):
             continue
         caps = (node.get("edge_media_to_caption") or {}).get("edges", [])
         cap = caps[0].get("node", {}).get("text", "")[:100] if caps else ""
+        lid = str(loc.get("id") or "")
+        adres = loc.get("address_json")
+        if isinstance(adres, str):
+            try:
+                adres = json.loads(adres)
+            except Exception:
+                pass
+        detay = ig_location_details(lid, sessionid)
+        if detay:
+            adr2 = detay.get("address_json")
+            if isinstance(adr2, str):
+                try:
+                    adr2 = json.loads(adr2)
+                except Exception:
+                    pass
+            adres = adr2 or adres
         locs.append({"kisa_kod": node.get("shortcode"),
                      "tarih_utc": node.get("taken_at_timestamp"),
-                     "yer": loc.get("name"), "lat": loc.get("lat"),
-                     "lng": loc.get("lng"), "adres": loc.get("address_json"), "altyazi": cap})
+                     "yer": (detay or {}).get("name") or loc.get("name"),
+                     "lat": (detay or {}).get("lat") or loc.get("lat"),
+                     "lng": (detay or {}).get("lng") or loc.get("lng"),
+                     "adres": adres, "altyazi": cap})
     return locs
 
 
@@ -428,9 +686,7 @@ def ig_user_info(user_id, sessionid):
     if not sessionid:
         return None
     st, _, raw = http_get(f"https://i.instagram.com/api/v1/users/{user_id}/info/",
-                          headers={"User-Agent": IG_UA, "x-ig-app-id": MOBILE_APP_ID,
-                                   "Accept-Encoding": "identity", "Cookie": f"sessionid={sessionid}"},
-                          timeout=15)
+                          headers=ig_headers(sessionid), timeout=15)
     try:
         data = json.loads(raw.decode("utf-8", "ignore"))
         return data.get("user")
@@ -439,6 +695,7 @@ def ig_user_info(user_id, sessionid):
 
 
 def ig_deep_dive(username, sessionid=None, max_posts=30):
+    """GERÇEK ID + profil + geotag konumlar + (oturumla) public alanlar."""
     user_id, meta, err = ig_get_user_id(username, sessionid)
     if not user_id:
         return {"username": username, "hata": err}
@@ -481,6 +738,27 @@ def build_device_fingerprint():
     return {"imei": imei,
             "device_id": "android-" + hashlib.md5(imei.encode()).hexdigest()[:16],
             "phone_id": str(uuid.uuid4()), "guid": str(uuid.uuid4())}
+
+
+def maps_link(lat, lng):
+    return f"https://www.google.com/maps?q={lat},{lng}"
+
+
+def cluster_locations(locs):
+    """Geotag'ları ~1km çözünürlükte kümeler: en aktif bölge + merkez nokta."""
+    noktalar = [l for l in locs if l.get("lat") is not None and l.get("lng") is not None]
+    if not noktalar:
+        return None
+    gruplar = {}
+    for l in noktalar:
+        k = (round(l["lat"], 2), round(l["lng"], 2))
+        gruplar.setdefault(k, []).append(l)
+    top = max(gruplar.values(), key=len)
+    mlat = round(sum(l["lat"] for l in noktalar) / len(noktalar), 5)
+    mlng = round(sum(l["lng"] for l in noktalar) / len(noktalar), 5)
+    return {"toplam_geotag": len(noktalar), "benzersiz_bolge": len(gruplar),
+            "en_aktif_bolge": top[0].get("yer"), "en_aktif_sayi": len(top),
+            "kumes_merkezi": {"lat": mlat, "lng": mlng}, "harita": maps_link(mlat, mlng)}
 
 # ---------------------------------------------------------------- GitHub / Reddit / HN
 def github_search_name(name):
@@ -580,15 +858,13 @@ def rdap_summary(ip):
     for ent in (j.get("entities") or [])[:3]:
         vc = ((ent.get("vcardArray") or [None, []])[1]) or []
         for item in vc:
-            if item[0] == "fn":
-                out.setdefault("kurum", []).append(item[3])
-            if item[0] == "email":
-                out.setdefault("email", []).append(item[3])
+            if item[0] == "fn": out.setdefault("kurum", []).append(item[3])
+            if item[0] == "email": out.setdefault("email", []).append(item[3])
     if j.get("events"):
         out["son_guncelleme"] = [e.get("eventDate") for e in j["events"] if e.get("eventAction") == "last changed"]
     return out
 
-# ---------------------------------------------------------------- SMTP (email doğrulama)
+# ---------------------------------------------------------------- SMTP
 def smtp_exchange(s, cmd, wait=4):
     if cmd:
         s.sendall((cmd + "\r\n").encode())
@@ -626,21 +902,16 @@ def smtp_validate(mx, rcpt, mail_from="noreply@osint.local"):
         rc = smtp_exchange(s, f"RCPT TO:<{rcpt}>")
         smtp_exchange(s, "QUIT")
         s.close()
-        if rc.startswith("250"):
-            sonuc = "muhtemelen VAR"
-        elif rc.startswith("5"):
-            sonuc = "yok/reddedildi"
-        elif rc.startswith("4"):
-            sonuc = "geçici hata"
-        else:
-            sonuc = "belirsiz"
+        if rc.startswith("250"): sonuc = "muhtemelen VAR"
+        elif rc.startswith("5"): sonuc = "yok/reddedildi"
+        elif rc.startswith("4"): sonuc = "geçici hata"
+        else: sonuc = "belirsiz"
         return {"adres": rcpt, "mx": mx, "sonuc": sonuc, "yanit": rc.strip()[:120]}
     except Exception as e:
         return {"adres": rcpt, "mx": mx, "sonuc": "bağlantı hatası", "yanit": str(e)[:120]}
 
 
 def send_test_mail(to_addr, subject, body):
-    """Açıkça belirtilen TEK adrese test maili (toplu gönderim yok)."""
     import smtplib
     domain = to_addr.split("@")[-1]
     mx = mx_lookup(domain)
@@ -683,9 +954,8 @@ def extract_profiles_from_urls(urls):
             found["telegram"].add(segs[0])
     return found
 
-# ================================================================ YENİ ARAÇLAR
+# ================================================================ DİĞER ARAÇLAR
 def url_chain(url, timeout=10, max_hops=5):
-    """Redirect zincirini kaydeden istek -> (chain, son_status, son_headers, body)"""
     chain = []
     method = "GET"
     for _ in range(max_hops):
@@ -731,12 +1001,11 @@ def ssl_cert_info(host, port=443):
         with socket.create_connection((host, port), timeout=8) as raw:
             with ctx.wrap_socket(raw, server_hostname=host) as s:
                 cert = s.getpeercert()
-        issuer = dict(x[0] for x in cert.get("issuer", []))
-        subject = dict(x[0] for x in cert.get("subject", []))
+        issuer = dict(x for x in cert.get("issuer", []))
+        subject = dict(x for x in cert.get("subject", []))
         return {"veren": issuer.get("organizationName") or issuer.get("commonName"),
                 "cn": subject.get("commonName"),
-                "baslangic": cert.get("notBefore"),
-                "bitis": cert.get("notAfter"),
+                "baslangic": cert.get("notBefore"), "bitis": cert.get("notAfter"),
                 "san": [x[1] for x in cert.get("subjectAltName", [])][:8]}
     except Exception as e:
         return {"hata": str(e)}
@@ -855,22 +1124,14 @@ def cve_search(q):
 
 def identify_hash(h):
     h = h.strip()
-    if re.fullmatch(r"[0-9a-fA-F]{32}", h):
-        return "MD5 veya NTLM (32 hex — ayırt etmek için uzunluk yetmez)"
-    if re.fullmatch(r"[0-9a-fA-F]{40}", h):
-        return "SHA-1"
-    if re.fullmatch(r"[0-9a-fA-F]{64}", h):
-        return "SHA-256"
-    if re.fullmatch(r"[0-9a-fA-F]{128}", h):
-        return "SHA-512"
-    if re.match(r"^\$2[aby]\$\d{2}\$", h):
-        return "bcrypt"
-    if re.match(r"^\$1\$", h):
-        return "MD5 crypt"
-    if re.match(r"^\$5\$", h):
-        return "SHA-256 crypt"
-    if re.match(r"^\$6\$", h):
-        return "SHA-512 crypt"
+    if re.fullmatch(r"[0-9a-fA-F]{32}", h): return "MD5 veya NTLM (32 hex — ayırt etmek için uzunluk yetmez)"
+    if re.fullmatch(r"[0-9a-fA-F]{40}", h): return "SHA-1"
+    if re.fullmatch(r"[0-9a-fA-F]{64}", h): return "SHA-256"
+    if re.fullmatch(r"[0-9a-fA-F]{128}", h): return "SHA-512"
+    if re.match(r"^\$2[aby]\$\d{2}\$", h): return "bcrypt"
+    if re.match(r"^\$1\$", h): return "MD5 crypt"
+    if re.match(r"^\$5\$", h): return "SHA-256 crypt"
+    if re.match(r"^\$6\$", h): return "SHA-512 crypt"
     return None
 
 
@@ -954,15 +1215,15 @@ def shodan_host(ip):
 # ================================================================ BANNER
 def banner():
     line("=")
-    print(GREEN + "         OSINT MEGA v5 — MARKOS OSINT ARACI (16 ARAÇ)" + RESET)
-    print(BLUE + "   Sıfır simülasyon: tüm sonuçlar CANLI API/HTTP yanıtıdır" + RESET)
+    print(GREEN + "         OSINT MEGA v7 — MARKOS OSINT ARACI (17 ARAÇ + VERİTABANI)" + RESET)
+    print(BLUE + "   Tüm sonuçlar CANLI API/HTTP yanıtıdır — simülasyon YOKTUR" + RESET)
     line("=")
     print(GREEN + "  [ + ] " + BLUE + "Bu Araç OSINT Aracıdır" + RESET)
     print(BLUE + "  [ * ] " + GREEN + "Bu Araç MarkOs'a Aittir" + RESET)
     print(GREEN + "  [ ! ] " + BLUE + "Bu Aracı yetkili kişiler kullanabilir" + RESET)
     print(BLUE + "  [ ! ] " + GREEN + "Sorumluluk kullanıcıya aittir" + RESET)
     line("=")
-    print(GREEN + " [ 1 ] " + BLUE + "Username → ID bulma (gerçek Instagram ID + geotag konum)")
+    print(GREEN + " [ 1 ] " + BLUE + "Username → CANLI IG ID + KONUM (oturum açarak)")
     print(GREEN + " [ 2 ] " + BLUE + "Telefon → ülke/operatör + web izi + dork")
     print(GREEN + " [ 3 ] " + BLUE + "İsim → kişisel bilgi taraması (OSINT)")
     print(GREEN + " [ 4 ] " + BLUE + "Email → aday + MX + SMTP doğrulama + test maili")
@@ -978,19 +1239,23 @@ def banner():
     print(GREEN + " [14 ] " + BLUE + "Email repütasyonu (emailrep.io)")
     print(GREEN + " [15 ] " + BLUE + "Wayback makinesi / arşiv kontrolü")
     print(GREEN + " [16 ] " + BLUE + "Shodan sorgu (SHODAN_API_KEY gerekir)")
+    print(GREEN + " [17 ] " + BLUE + "IG oturum yönetimi (giriş / durum / çıkış)")
+    print(GREEN + " [18 ] " + BLUE + "Veritabanı — tarama geçmişi (SQLite)")
     print(GREEN + " [ 0 ] " + BLUE + "Çıkış")
     line("=")
 
 # ================================================================ MENÜ SEÇENEKLERİ
 def opt_username():
     line("=")
-    print(GREEN + "  [1] USERNAME → GERÇEK ID + KONUM (Instagram)" + RESET)
+    print(GREEN + "  [1] USERNAME → CANLI IG ID + KONUM" + RESET)
     line("=")
     u = input(BLUE + "[?] Instagram kullanıcı adı: " + RESET).strip()
     if not u:
         return
+    sess = get_active_session(ask=True)
     info(f"'{u}' için 5 yöntemli gerçek ID zinciri çalıştırılıyor...")
-    r = ig_deep_dive(u, os.environ.get("IG_SESSIONID"), max_posts=30)
+    r = ig_deep_dive(u, sess["sessionid"] if sess else None, max_posts=30)
+    db_kaydet("ig_username", u, r)
     if "hata" in r:
         hata(r["hata"].get("detail", r["hata"]))
         return
@@ -1003,13 +1268,20 @@ def opt_username():
     ok(f"Medya sayısı   : {p.get('media_count')}")
     for k, v in (p.get("ek") or {}).items():
         ok(f"{k:<24}: {v}")
-    if r.get("locations"):
-        ok(f"{len(r['locations'])} medyada KONUM ETİKETİ bulundu:")
-        for loc in r["locations"][:12]:
+    locs = r.get("locations") or []
+    if locs:
+        ok(f"{len(locs)} medyada KONUM ETİKETİ bulundu:")
+        for loc in locs[:12]:
             ll = f"{loc['lat']}, {loc['lng']}" if loc["lat"] is not None else "koordinat yok"
             ts = (dt.datetime.fromtimestamp(loc["tarih_utc"], tz=dt.timezone.utc).strftime("%Y-%m-%d")
                   if loc["tarih_utc"] else "-")
-            print(GREEN + f"      • {loc['yer']} | {ll} | {ts} | adres: {loc['adres']}" + RESET)
+            print(GREEN + f"      • {loc['yer']} | {ll} | {ts} | {maps_link(loc['lat'], loc['lng']) if loc['lat'] is not None else ''}" + RESET)
+        kl = cluster_locations(locs)
+        if kl:
+            ok("KONUM KÜME ANALİZİ (gerçek geotag verisinden):")
+            ok(f"Toplam geotag: {kl['toplam_geotag']} | Benzersiz bölge: {kl['benzersiz_bolge']}")
+            ok(f"En aktif bölge: {kl['en_aktif_bolge']} (x{kl['en_aktif_sayi']})")
+            ok(f"Merkez nokta: {kl['kumes_merkezi']} — {kl['harita']}")
     elif "not" in r:
         hata(r["not"])
     else:
@@ -1019,6 +1291,7 @@ def opt_username():
     print(BLUE + f"    IMEI: {dev['imei']} | device_id: {dev['device_id']}" + RESET)
     info("Aynı username diğer platformlarda aranıyor (~46 site)...")
     pc = platform_checks(u, SITES, 10)
+    db_kaydet("platform_checks", u, pc)
     for site, r2 in pc.items():
         if r2["durum"].startswith("BULUNDU"):
             ok(f"{site:<12} {r2['durum']:<10} {r2['url']}")
@@ -1037,16 +1310,19 @@ def opt_phone():
     print(GREEN + json.dumps(pl, ensure_ascii=False, indent=2) + RESET)
     e164 = pl.get("phone_e164") or re.sub(r"\D", "", tel)
     nat = pl.get("national_format")
+    web_iz = []
     if pl.get("phone_valid"):
         for q in [f'"{e164}"', f'"{nat}"']:
             info(f"Web aranıyor: {q}")
             for r in ddg_search(q, 6):
                 print(GREEN + f"    • {r['title'][:70]} — {r['url']}" + RESET)
+                web_iz.append(r["url"])
             time.sleep(2.5)
         info("Elle çalıştırmak için dork linkleri:")
         dork_links(f'"{e164}" OR "{nat}"')
     else:
         hata("Numara geçersiz görünüyor (veriphone doğrulaması).")
+    db_kaydet("telefon", tel, {"bilgi": pl, "web_izleri": web_iz})
     hata("Dürüst sınır: mobil hat için sokak seviyesi konum ücretsiz API'de YOKTUR. Alınan: ülke, operatör, hat tipi + web izi.")
 
 def opt_name():
@@ -1128,11 +1404,12 @@ def opt_name():
     for x in hn["yazar"][:5]:
         print(GREEN + f"    • [yazar] {x['baslik'][:60]} — {x['url']}" + RESET)
 
-    info("[INSTAGRAM] bulunan hesaplar derin taranıyor (gerçek ID + konum)...")
+    info("[INSTAGRAM] bulunan hesaplar derin taranıyor (canlı ID + konum)...")
+    sess = get_active_session(ask=False)
     ig_targets = list(dict.fromkeys([guesses[0]] + list(profs["instagram"])))[:3]
     ig_res = {}
     for u in ig_targets:
-        ig_res[u] = ig_deep_dive(u, os.environ.get("IG_SESSIONID"), 20)
+        ig_res[u] = ig_deep_dive(u, sess["sessionid"] if sess else None, 20)
         time.sleep(2)
     report["instagram"] = ig_res
     for u, r in ig_res.items():
@@ -1164,6 +1441,7 @@ def opt_name():
     with open(fname, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
     ok(f"JSON rapor kaydedildi: {fname}")
+    db_kaydet("isim_taramasi", name, report)
 
 def opt_email():
     line("=")
@@ -1174,6 +1452,7 @@ def opt_email():
     hedef = input(BLUE + "[?] Email adresi veya 'Ad Soyad': " + RESET).strip()
     if not hedef:
         return
+    sonuclar = []
     if "@" in hedef:
         adres = hedef.strip()
         info(f"{adres} için MX + SMTP doğrulama...")
@@ -1184,6 +1463,7 @@ def opt_email():
             host = mx[0].split()[-1].rstrip(".")
             sonuc = smtp_validate(host, adres)
             ok(f"{sonuc['sonuc']} | {sonuc['yanit']}")
+            sonuclar.append(sonuc)
         info("Web izi aranıyor...")
         for r in ddg_search(f'"{adres}"', 6):
             print(GREEN + f"    • {r['title'][:70]} — {r['url']}" + RESET)
@@ -1211,10 +1491,12 @@ def opt_email():
             host = mxs[dom][0].split()[-1].rstrip(".")
             sonuc = smtp_validate(host, adres)
             ok(f"{adres:<40} {sonuc['sonuc']:<18} {sonuc['yanit'][:50]}")
+            sonuclar.append(sonuc)
             n += 1
             if n >= 10:
                 break
             time.sleep(0.3)
+    db_kaydet("email", hedef, sonuclar)
     gonder = input(BLUE + "\n[?] Açıkça belirttiğiniz TEK adrese test maili gönderilsin mi? (adres / boş=hayır): " + RESET).strip()
     if "@" in gonder:
         info(f"{gonder} adresine test maili deneniyor...")
@@ -1235,9 +1517,12 @@ def opt_ip():
     print(GREEN + "\n[+] IP bilgisi:" + RESET)
     print(GREEN + json.dumps(il, ensure_ascii=False, indent=2) + RESET)
     info("PTR (ters DNS) sorgulanıyor...")
-    print(GREEN + f"    {ptr_lookup(ip) if ptr_lookup(ip) else 'PTR kaydı yok'}" + RESET)
+    ptr = ptr_lookup(ip)
+    print(GREEN + f"    {ptr}" + RESET)
     info("RDAP (kayıt sahibi / ağ) sorgulanıyor...")
-    print(GREEN + json.dumps(rdap_summary(ip), ensure_ascii=False, indent=4) + RESET)
+    rdap = rdap_summary(ip)
+    print(GREEN + json.dumps(rdap, ensure_ascii=False, indent=4) + RESET)
+    db_kaydet("ip", ip, {"ip_api": il, "ptr": ptr, "rdap": rdap})
 
 def opt_search():
     line("=")
@@ -1254,6 +1539,7 @@ def opt_search():
     for i, r in enumerate(res, 1):
         print(GREEN + f"  {i}. {r['title'][:80]}" + RESET)
         print(BLUE + f"     {r['url']}" + RESET)
+    db_kaydet("arama", q, res)
     info("Google/Bing dork linkleri:")
     dork_links(q)
 
@@ -1265,22 +1551,27 @@ def opt_domain():
     if not d:
         return
     d = re.sub(r"^https?://(www\.)?", "", d).strip("/").split("/")[0].lower()
-    info(f"DNS kayıtları sorgulanıyor (Cloudflare DoH)...")
+    info("DNS kayıtları sorgulanıyor (Cloudflare DoH)...")
+    dns = {}
     for tip in ("A", "AAAA", "MX", "NS", "TXT"):
         sonuc = dns_query(d, tip)
+        dns[tip] = sonuc
         if sonuc:
             print(GREEN + f"    {tip:<5}: {', '.join(str(x) for x in sonuc[:6])}" + RESET)
         else:
             print(BLUE + f"    {tip:<5}: kayıt yok / yanıt yok" + RESET)
     info("RDAP WHOIS sorgulanıyor...")
-    print(GREEN + json.dumps(domain_rdap(d), ensure_ascii=False, indent=4) + RESET)
+    rdap = domain_rdap(d)
+    print(GREEN + json.dumps(rdap, ensure_ascii=False, indent=4) + RESET)
     info("Site başlığı deneniyor...")
     st, _, data = http_get("https://" + d, timeout=12)
     m = re.search(rb"<title[^>]*>(.*?)</title>", data, re.S | re.I)
+    baslik = m.group(1).decode("utf-8", "ignore").strip()[:80] if m else "-"
     if st in (200, 301, 302):
-        print(GREEN + f"    HTTP {st} | başlık: {m.group(1).decode('utf-8','ignore').strip()[:80] if m else '-'}" + RESET)
+        print(GREEN + f"    HTTP {st} | başlık: {baslik}" + RESET)
     else:
         hata(f"HTTP {st} — site çekilemedi (bot engeli veya site kapalı olabilir).")
+    db_kaydet("domain", d, {"dns": dns, "rdap": rdap, "http": st, "baslik": baslik})
 
 def opt_url():
     line("=")
@@ -1306,7 +1597,9 @@ def opt_url():
     guv = {"strict-transport-security": "HSTS", "content-security-policy": "CSP",
            "x-frame-options": "X-Frame-Options", "x-content-type-options": "X-Content-Type-Options",
            "referrer-policy": "Referrer-Policy", "permissions-policy": "Permissions-Policy"}
+    guv_sonuc = {}
     for k, ad in guv.items():
+        guv_sonuc[ad] = bool(rh.get(k))
         if rh.get(k):
             print(GREEN + f"    ✓ {ad:<24} VAR" + RESET)
         else:
@@ -1317,14 +1610,18 @@ def opt_url():
         print(GREEN + f"    x-powered-by: {rh['x-powered-by'][:80]}" + RESET)
     host = urlparse(u).hostname or (chain[-1]["url"].split("/")[2] if chain else "")
     info("SSL sertifika bilgisi:")
-    print(GREEN + json.dumps(ssl_cert_info(host), ensure_ascii=False, indent=2) + RESET)
+    cert = ssl_cert_info(host)
+    print(GREEN + json.dumps(cert, ensure_ascii=False, indent=2) + RESET)
     info("Çözümlenen IP:")
+    ipinfo = {}
     try:
         ip = socket.gethostbyname(host)
         print(GREEN + f"    {ip}" + RESET)
-        print(GREEN + json.dumps(ip_lookup(ip), ensure_ascii=False, indent=2) + RESET)
+        ipinfo = ip_lookup(ip)
+        print(GREEN + json.dumps(ipinfo, ensure_ascii=False, indent=2) + RESET)
     except Exception as e:
         hata(str(e))
+    db_kaydet("url", u, {"zincir": chain, "durum": st, "guvenlik": guv_sonuc, "ssl": cert, "ip": ipinfo})
 
 def opt_ports():
     line("=")
@@ -1341,6 +1638,7 @@ def opt_ports():
     acik, banner = port_scan(ip)
     if not acik:
         hata("Açık port bulunamadı (hedef filtrelenmiş olabilir).")
+        db_kaydet("port_taramasi", hst, {"acik_portlar": [], "banner": {}})
         return
     ok(f"Açık portlar ({len(acik)}): {', '.join(str(p) for p in acik)}")
     for p in acik[:12]:
@@ -1348,6 +1646,7 @@ def opt_ports():
         print(GREEN + f"    {p:<6} {'banner: ' + b if b else ''}" + RESET)
     if len(acik) > 12:
         print(BLUE + f"    ... ve {len(acik) - 12} port daha" + RESET)
+    db_kaydet("port_taramasi", hst, {"acik_portlar": acik, "banner": banner})
 
 def opt_subdomains():
     line("=")
@@ -1368,6 +1667,7 @@ def opt_subdomains():
         print(GREEN + f"    {s:<45} {ip}" + RESET)
     if len(subs) > 40:
         print(BLUE + f"    ... ve {len(subs) - 40} tane daha (ilk 60 çözümlendi)" + RESET)
+    db_kaydet("alt_alan", d, {"alt_alanlar": subs, "canli_ip": alive})
 
 def opt_mac():
     line("=")
@@ -1377,7 +1677,9 @@ def opt_mac():
     if not mac:
         return
     info("maclookup.app sorgulanıyor...")
-    print(GREEN + json.dumps(mac_lookup(mac), ensure_ascii=False, indent=2) + RESET)
+    sonuc = mac_lookup(mac)
+    print(GREEN + json.dumps(sonuc, ensure_ascii=False, indent=2) + RESET)
+    db_kaydet("mac", mac, sonuc)
 
 def opt_cve():
     line("=")
@@ -1402,6 +1704,7 @@ def opt_cve():
         ozet = (c.get("summary") or c.get("description") or "")[:150]
         print(GREEN + f"    • {c.get('id')} | {cv} | {tarih}")
         print(BLUE + f"      {ozet}" + RESET)
+    db_kaydet("cve", q, sonuc[:10])
 
 def opt_hash():
     line("=")
@@ -1427,6 +1730,7 @@ def opt_hash():
         ok("Bu değer bilinen sızıntı veritabanlarında BULUNAMADI.")
     else:
         hata(f"UYARI: Bu değer sızıntı veritabanlarında {cnt} kez geçiyor — ele geçirilmiş bir parola olabilir!")
+    db_kaydet("hash", h, {"format": tip, "sha1": sha1, "sizinti_sayisi": cnt})
 
 def opt_emailrep():
     line("=")
@@ -1436,7 +1740,9 @@ def opt_emailrep():
     if not e:
         return
     info(f"{e} sorgulanıyor...")
-    print(GREEN + json.dumps(emailrep(e), ensure_ascii=False, indent=2) + RESET)
+    sonuc = emailrep(e)
+    print(GREEN + json.dumps(sonuc, ensure_ascii=False, indent=2) + RESET)
+    db_kaydet("email_rep", e, sonuc)
 
 def opt_wayback():
     line("=")
@@ -1467,6 +1773,7 @@ def opt_wayback():
         ts, orig, st = r[0], r[1], r[2] if len(r) > 2 else ""
         tarih = f"{ts[:4]}-{ts[4:6]}-{ts[6:8]}"
         print(GREEN + f"    {tarih}  HTTP {st:<4} {orig[:70]}" + RESET)
+    db_kaydet("wayback", u, {"snapshot": snap, "cdx": rows[:15]})
 
 def opt_shodan():
     line("=")
@@ -1479,12 +1786,71 @@ def opt_shodan():
         hata("Özel/yerel adres — Shodan'da anlamlı veri yok.")
         return
     info("Shodan sorgulanıyor...")
-    print(GREEN + json.dumps(shodan_host(ip), ensure_ascii=False, indent=2) + RESET)
+    sonuc = shodan_host(ip)
+    print(GREEN + json.dumps(sonuc, ensure_ascii=False, indent=2) + RESET)
+    db_kaydet("shodan", ip, sonuc)
+
+def opt_ig_session():
+    line("=")
+    print(GREEN + "  [17] IG OTURUM YÖNETİMİ" + RESET)
+    line("=")
+    saved = load_ig_session()
+    if saved:
+        gecerli = ig_session_valid(saved["sessionid"])
+        print(GREEN + f"    Durum: {'AKTİF' if gecerli else 'GEÇERSİZ'} (kullanıcı: {saved['username']})" + RESET)
+    else:
+        hata("Kayıtlı oturum yok.")
+    sec = input(BLUE + "[?] [g]iriş / [ç]ıkış / [v]azgeç: " + RESET).strip().lower()
+    if sec == "g":
+        u = input(BLUE + "[?] IG kullanıcı adı: " + RESET).strip()
+        p = getpass.getpass(BLUE + "[?] IG şifre: " + RESET)
+        if not u or not p:
+            hata("Boş giriş.")
+            return
+        sonuc = ig_login_flow(u, p)
+        if sonuc and sonuc.get("sessionid"):
+            save_ig_session(sonuc["sessionid"], u)
+            ok(f"Oturum kaydedildi: {u}")
+        else:
+            hata(f"Giriş başarısız: {sonuc.get('hata') if sonuc else 'bilinmiyor'}")
+    elif sec == "ç":
+        delete_ig_session()
+        ok("Oturum silindi.")
+
+def opt_db():
+    line("=")
+    print(GREEN + "  [18] VERİTABANI — TARAMA GEÇMİŞİ (SQLite: ~/.markos_osint.db)" + RESET)
+    line("=")
+    sec = input(BLUE + "[?] [s]on kayıtlar / [h]edef listesi / [ö]zet / [t]emizle / [v]azgeç: " + RESET).strip().lower()
+    if sec == "s":
+        for rid, arac, hedef, zaman in db_son_kayitlar(20):
+            print(GREEN + f"    #{rid:<4} {arac:<14} {hedef:<35} {zaman}" + RESET)
+    elif sec == "h":
+        for tip, deger, ilk, son in db_hedef_listesi():
+            print(GREEN + f"    {tip:<14} {deger:<35} ilk: {ilk} son: {son}" + RESET)
+    elif sec == "ö":
+        ozet, top = db_ozet()
+        ok("Araç bazında tarama sayısı:")
+        for arac, cnt in ozet:
+            print(GREEN + f"    {arac:<14} {cnt} kayıt" + RESET)
+        ok("En çok taranan hedefler:")
+        for hedef, cnt in top:
+            print(GREEN + f"    {hedef:<35} {cnt} kez" + RESET)
+    elif sec == "t":
+        onay = input(BLUE + "[?] Tüm veritabanı silinsin mi? [e/h]: " + RESET).strip().lower()
+        if onay == "e":
+            db_temizle()
+            ok("Veritabanı temizlendi.")
+        else:
+            hata("İptal.")
+    else:
+        hata("İptal.")
 
 # ================================================================ ANA MENÜ
 def main():
     if os.name == "nt":
         os.system("")
+    db_init()
     banner()
     while True:
         try:
@@ -1495,19 +1861,29 @@ def main():
         if secim == "0":
             print(GREEN + "\n[+] Çıkılıyor. MarkOs OSINT — iyi avlar." + RESET)
             break
-        t0 = time.time()
-        secenekler = {"1": opt_username, "2": opt_phone, "3": opt_name, "4": opt_email,
-                      "5": opt_ip, "6": opt_search, "7": opt_domain, "8": opt_url,
-                      "9": opt_ports, "10": opt_subdomains, "11": opt_mac, "12": opt_cve,
-                      "13": opt_hash, "14": opt_emailrep, "15": opt_wayback, "16": opt_shodan}
-        if secim not in secenekler:
+        elif secim == "1": opt_username()
+        elif secim == "2": opt_phone()
+        elif secim == "3": opt_name()
+        elif secim == "4": opt_email()
+        elif secim == "5": opt_ip()
+        elif secim == "6": opt_search()
+        elif secim == "7": opt_domain()
+        elif secim == "8": opt_url()
+        elif secim == "9": opt_ports()
+        elif secim == "10": opt_subdomains()
+        elif secim == "11": opt_mac()
+        elif secim == "12": opt_cve()
+        elif secim == "13": opt_hash()
+        elif secim == "14": opt_emailrep()
+        elif secim == "15": opt_wayback()
+        elif secim == "16": opt_shodan()
+        elif secim == "17": opt_ig_session()
+        elif secim == "18": opt_db()
+        else:
             hata("Geçersiz seçim.")
-            continue
-        try:
-            secenekler[secim]()
-        except Exception as e:
-            hata(f"Beklenmedik hata: {e}")
-        print(BLUE + f"\n[+] Bu işlem {time.time() - t0:.0f} saniye sürdü." + RESET)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(GREEN + "\n[+] Çıkılıyor. MarkOs OSINT — iyi avlar." + RESET)
