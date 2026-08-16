@@ -5,6 +5,7 @@
 OSINT MEGA v8 — MARKOS İŞLETİM SİSTEMİ OSINT (17 GERÇEK ARAÇ + VERİTABANI)
 ===========================================================================
 Tüm araçlar GERÇEKTİR: her sonuç canlı API/HTTP yanıtıdır, sahte veri yoktur.
+Menü 1 (Username) artık GİRİŞSİZ çalışır: anonim topsearch / web_profile_info / HTML zinciri.
 Instagram ID/konum için kendi hesabınızla oturum açılır (menü 17 veya otomatik).
 Tarama geçmişi SQLite veritabanına kaydedilir: ~/.markos_osint.db
 Yalnızca yetkilendirilmiş hedeflerde kullanın.
@@ -721,6 +722,123 @@ def ig_deep_dive(username, sessionid=None, max_posts=30):
                 prof["ek"] = ek
     return out
 
+# ================================================================ MENÜ 1 v2 — ANONİM (GİRİŞSİZ) IG SORGUSU
+# Gerçek yöntemler: topsearch / web_profile_info (i. + www.) / HTML scrape
+# ASLA sahte veri üretilmez; anonim alınamayan alan açıkça söylenir.
+
+IG_ANON_ATTEMPTS = [
+    {"host": "i.instagram.com",    "app_id": MOBILE_APP_ID, "ua": IG_UA},
+    {"host": "www.instagram.com",  "app_id": WEB_APP_ID,    "ua": None},
+    {"host": "www.instagram.com",  "app_id": MOBILE_APP_ID, "ua": IG_UA},
+]
+
+def ig_topsearch(username):
+    """ANONİM topsearch — arama endpoint'i, gerçek pk + temel profil döner (Baygram tarzı anlık)."""
+    path = "/web/search/topsearch/?" + urlencode({"query": username, "count": 3})
+    hdrs = {"User-Agent": random.choice(UA_LIST), "x-ig-app-id": WEB_APP_ID,
+            "x-requested-with": "XMLHttpRequest", "Accept": "*/*",
+            "Referer": "https://www.instagram.com/", "Accept-Encoding": "identity"}
+    st, _, raw = http_get("https://www.instagram.com" + path, headers=hdrs, timeout=15)
+    if st != 200:
+        return None, f"topsearch HTTP {st} (login wall olabilir)"
+    try:
+        j = json.loads(raw.decode("utf-8", "ignore"))
+    except Exception:
+        return None, "topsearch JSON parse hatası"
+    for x in (j or {}).get("users", []):
+        uu = x.get("user") or {}
+        if uu.get("username", "").lower() == username.lower() and uu.get("pk"):
+            return uu, None
+    return None, "topsearch: kullanıcı bulunamadı"
+
+def ig_anon_profile(username):
+    """ANONİM web_profile_info — 3 varyasyon; login wall olursa sıradakine geçer."""
+    for a in IG_ANON_ATTEMPTS:
+        try:
+            data, err = ig_fetch_profile(username, None, host=a["host"],
+                                         app_id=a["app_id"], ua=a["ua"])
+            if data and ((data.get("data") or {}).get("user")):
+                return data, None
+        except Exception:
+            continue
+        time.sleep(0.4)
+    return None, "web_profile_info: 3 varyasyon da login wall / yanıt yok"
+
+def ig_anon_media(username, max_posts=24):
+    """ANONİM medya akışı (geotag için). Sayfalama login gerektirirse temiz durur."""
+    edges, after, hata = [], None, None
+    while len(edges) < max_posts:
+        data, err = ig_fetch_profile(username, None, after=after, first=12)
+        if err or not data:
+            hata = err
+            break
+        m = ((data.get("data") or {}).get("user") or {}).get("edge_owner_to_timeline_media") or {}
+        page = m.get("edges") or []
+        if not page:
+            break
+        edges.extend(page)
+        pi = m.get("page_info") or {}
+        if not pi.get("has_next_page"):
+            break
+        after = pi.get("end_cursor")
+        time.sleep(1.5)
+    return edges[:max_posts], hata
+
+def ig_anon_locations(edges):
+    """Medya düğümlerinden GERÇEK geotag'ları çıkarır (yer + lat/lng + adres + tarih + gönderi linki)."""
+    locs = []
+    for e in edges:
+        node = e.get("node", {})
+        loc = node.get("location")
+        if not loc:
+            continue
+        caps = (node.get("edge_media_to_caption") or {}).get("edges", [])
+        cap = caps[0].get("node", {}).get("text", "")[:100] if caps else ""
+        adres = loc.get("address_json")
+        if isinstance(adres, str):
+            try:
+                adres = json.loads(adres)
+            except Exception:
+                pass
+        sc = node.get("shortcode")
+        locs.append({"kisa_kod": sc,
+                     "url": "https://www.instagram.com/p/" + sc + "/" if sc else None,
+                     "tarih_utc": node.get("taken_at_timestamp"),
+                     "yer": loc.get("name"),
+                     "lat": loc.get("lat"), "lng": loc.get("lng"),
+                     "adres": adres, "altyazi": cap})
+    return locs
+
+def normalize_anon_user(u):
+    """topsearch / web_profile_info / HTML — hepsini tek formata indirger."""
+    flw = u.get("follower_count")
+    if flw is None:
+        flw = (u.get("edge_followed_by") or {}).get("count")
+    flg = u.get("following_count")
+    if flg is None:
+        flg = (u.get("edge_follow") or {}).get("count")
+    med = u.get("media_count")
+    if med is None:
+        med = (u.get("edge_owner_to_timeline_media") or {}).get("count")
+    return {"id": u.get("pk") or u.get("id"), "full_name": u.get("full_name"),
+            "biography": u.get("biography"), "is_private": u.get("is_private"),
+            "is_verified": u.get("is_verified"), "followers": flw, "following": flg,
+            "media_count": med,
+            "is_business": u.get("is_business") or u.get("is_professional_account"),
+            "kategori": u.get("category_name") or u.get("category"),
+            "baglanti": u.get("external_url"),
+            "foto": u.get("profile_pic_url_hd") or u.get("profile_pic_url")}
+
+def ig_device_report():
+    """GERÇEK cihaz parmak izi — Luhn geçerli IMEI + GUID, her çalıştırmada üretilir."""
+    dev = build_device_fingerprint()
+    return {"sdk_surum": IG_UA.split("Instagram ")[1].split(" ")[0],
+            "user_agent": IG_UA,
+            "web_app_id": WEB_APP_ID, "mobile_app_id": MOBILE_APP_ID,
+            "guid": dev["guid"], "device_id": dev["device_id"],
+            "phone_id": dev["phone_id"], "imei": dev["imei"],
+            "android_id": dev["device_id"].replace("android-", "")}
+
 # ---------------------------------------------------------------- cihaz fingerprint (IMEI)
 def luhn_check_digit(body):
     total = 0
@@ -825,7 +943,7 @@ def phone_lookup(phone, country="TR"):
     j, e = api_json("https://api.veriphone.io/v2/verify?" + urlencode({"phone": num}))
     if e or not j:
         return {"hata": e or "yanıt yok"}
-    keys = ("phone_valid", "phone_e164", "country", "carrier", "line_type", "national_format")
+    keys = ("phone_valid", "e164", "country", "carrier", "line_type", "international_format", "national_format")
     return {k: j.get(k) for k in keys if j.get(k) is not None}
 
 
@@ -1225,7 +1343,7 @@ def banner():
     print(GREEN + "  [ ! ] " + BLUE + "Bu Aracı yetkili kişiler kullanabilir" + RESET)
     print(BLUE + "  [ ! ] " + GREEN + "Sorumluluk kullanıcıya aittir" + RESET)
     line("=")
-    print(GREEN + " [ 1 ] " + BLUE + "Username → CANLI IG ID + KONUM (oturum açarak)")
+    print(GREEN + " [ 1 ] " + BLUE + "Username → GİRİŞSİZ GERÇEK IG ID + KONUM + TESPİTLER")
     print(GREEN + " [ 2 ] " + BLUE + "Telefon → ülke/operatör + web izi + dork")
     print(GREEN + " [ 3 ] " + BLUE + "İsim → kişisel bilgi taraması (OSINT)")
     print(GREEN + " [ 4 ] " + BLUE + "Email → aday + MX + SMTP doğrulama + test maili")
@@ -1249,54 +1367,153 @@ def banner():
 # ================================================================ MENÜ SEÇENEKLERİ
 def opt_username():
     line("=")
-    print(GREEN + "  [1] USERNAME → CANLI IG ID + KONUM" + RESET)
+    print(GREEN + "  [1] USERNAME → GİRİŞSİZ GERÇEK IG ID + KONUM + TESPİTLER" + RESET)
     line("=")
     u = input(BLUE + "[?] Instagram kullanıcı adı: " + RESET).strip()
     if not u:
         return
-    sess = get_active_session(ask=True)
-    info(f"'{u}' için 5 yöntemli gerçek ID zinciri çalıştırılıyor...")
-    r = ig_deep_dive(u, sess["sessionid"] if sess else None, max_posts=30)
-    db_kaydet("ig_username", u, r)
-    if "hata" in r:
-        hata(r["hata"].get("detail", r["hata"]))
+    if not re.fullmatch(r"[A-Za-z0-9._]{1,30}", u):
+        hata("Geçersiz kullanıcı adı (harf/rakam/nokta/alt çizgi, en fazla 30 karakter).")
         return
-    p = r["profile"]
-    ok(f"GERÇEK USER ID : {p['id']}   (kaynak: {r['id_kaynak']})")
-    ok(f"Tam ad         : {p.get('full_name')}")
-    ok(f"Biyografi      : {p.get('biography')}")
-    ok(f"Private        : {p.get('is_private')} | Doğrulanmış: {p.get('is_verified')}")
-    ok(f"Takipçi/Takip  : {p.get('followers')} / {p.get('following')}")
-    ok(f"Medya sayısı   : {p.get('media_count')}")
-    for k, v in (p.get("ek") or {}).items():
-        ok(f"{k:<24}: {v}")
-    locs = r.get("locations") or []
-    if locs:
-        ok(f"{len(locs)} medyada KONUM ETİKETİ bulundu:")
-        for loc in locs[:12]:
-            ll = f"{loc['lat']}, {loc['lng']}" if loc["lat"] is not None else "koordinat yok"
-            ts = (dt.datetime.fromtimestamp(loc["tarih_utc"], tz=dt.timezone.utc).strftime("%Y-%m-%d")
-                  if loc["tarih_utc"] else "-")
-            print(GREEN + f"      • {loc['yer']} | {ll} | {ts} | {maps_link(loc['lat'], loc['lng']) if loc['lat'] is not None else ''}" + RESET)
-        kl = cluster_locations(locs)
-        if kl:
-            ok("KONUM KÜME ANALİZİ (gerçek geotag verisinden):")
-            ok(f"Toplam geotag: {kl['toplam_geotag']} | Benzersiz bölge: {kl['benzersiz_bolge']}")
-            ok(f"En aktif bölge: {kl['en_aktif_bolge']} (x{kl['en_aktif_sayi']})")
-            ok(f"Merkez nokta: {kl['kumes_merkezi']} — {kl['harita']}")
-    elif "not" in r:
-        hata(r["not"])
+    sonuc = {"username": u, "zaman": dt.datetime.now(dt.timezone.utc).isoformat()}
+
+    # ---- 1) USER TESPİTİ + USER ID TESPİTİ (anonim zincir, giriş duvarı YOK) ----
+    info(f"[USER TESPİTİ] '{u}' aranıyor (anonim zincir)...")
+    user_id, profil, kaynak = None, None, None
+
+    ts, ts_err = ig_topsearch(u)
+    if ts:
+        user_id, profil, kaynak = ts.get("pk"), ts, "topsearch (anonim, anlık)"
+        ok(f"topsearch anlık sonuç: pk={user_id}")
     else:
-        hata("Medyalarda geotag bulunamadı (kullanıcı konum etiketi kullanmıyor olabilir).")
-    dev = build_device_fingerprint()
-    info("Cihaz fingerprint (Luhn geçerli IMEI — üretilir, başkasından çekilmez):")
-    print(BLUE + f"    IMEI: {dev['imei']} | device_id: {dev['device_id']}" + RESET)
-    info("Aynı username diğer platformlarda aranıyor (~46 site)...")
+        info(f"    topsearch: {ts_err}")
+        info("    web_profile_info varyasyonları deneniyor (3 deneme)...")
+        data, err = ig_anon_profile(u)
+        if data:
+            p = data["data"]["user"]
+            if p.get("id"):
+                user_id, profil, kaynak = p["id"], p, "web_profile_info (anonim)"
+        else:
+            info(f"    web_profile_info: {err}")
+            info("    HTML scrape deneniyor...")
+            sid = ig_scrape_html(u)
+            if sid:
+                user_id, profil, kaynak = sid, {"id": sid, "username": u}, "profil HTML (anonim)"
+    sonuc["id_kaynak"] = kaynak
+
+    if not user_id:
+        hata("Anonim yöntemlerin TAMAMI login wall'a takıldı (Instagram IP'ni engelledi).")
+        hata("SAHTE ID ÜRETİLMEDİ — gerçek veri yoksa araç susar. Çözümler:")
+        hata("  • 10-20 dk bekleyip tekrar deneyin (engel geçicidir)")
+        hata("  • IP/VPN değiştirin (veri merkezi IP'leri daha çok engellenir)")
+        hata("  • Menü 17 ile kendi oturumunla girersen zincir otomatik oturumla devam eder")
+        db_kaydet("ig_username", u, sonuc)
+        return
+
+    ok(f"GERÇEK USER ID : {user_id}  (kaynak: {kaynak})")
+    sonuc["user_id"] = user_id
+    p = normalize_anon_user(profil)
+    sonuc["profil"] = p
+
+    print(GREEN + "  ── PROFİL (gerçek, anonim alınan alanlar) ──" + RESET)
+    ok(f"Kullanıcı adı : {u}")
+    ok(f"User ID       : {p['id']}")
+    ok(f"Tam ad        : {p.get('full_name') or '-'}")
+    ok(f"Biyografi     : {p.get('biography') or '-'}")
+    ok(f"Private       : {p.get('is_private')} | Doğrulanmış: {p.get('is_verified')}")
+    ok(f"Takipçi/Takip : {p.get('followers') if p.get('followers') is not None else '-'} / "
+       f"{p.get('following') if p.get('following') is not None else '-'}")
+    ok(f"Medya sayısı  : {p.get('media_count') if p.get('media_count') is not None else '-'}")
+    if p.get("is_business"):
+        ok(f"İşletme hesabı: evet | kategori: {p.get('kategori') or '-'} | site: {p.get('baglanti') or '-'}")
+    if p.get("foto"):
+        ok(f"Profil foto   : {p['foto']}")
+
+    # ---- 2) KONUM TESPİTİ (anonim medya geotag'ları — GERÇEK) ----
+    info("[KONUM TESPİTİ] Medya akışı çekiliyor (ilk ~24 gönderi)...")
+    locs = []
+    if p.get("is_private"):
+        hata("Private hesap — medya ve geotag'lar anonim görünmez (gerçek sınır).")
+        sonuc["konum_notu"] = "private"
+    else:
+        edges, merr = ig_anon_media(u)
+        sonuc["gorulen_medya"] = len(edges)
+        locs = ig_anon_locations(edges)
+        sonuc["konumlar"] = locs
+        if locs:
+            ok(f"{len(locs)} gönderide GERÇEK konum etiketi bulundu:")
+            for loc in locs[:12]:
+                ll = f"{loc['lat']}, {loc['lng']}" if loc.get("lat") is not None else "koordinat yok"
+                ts_ = (dt.datetime.fromtimestamp(loc["tarih_utc"], tz=dt.timezone.utc).strftime("%Y-%m-%d")
+                       if loc.get("tarih_utc") else "-")
+                murl = maps_link(loc["lat"], loc["lng"]) if loc.get("lat") is not None else ""
+                print(GREEN + f"      • {loc['yer']} | {ll} | {ts_} | {loc.get('url')} | {murl}" + RESET)
+            kl = cluster_locations(locs)
+            if kl:
+                ok("KONUM KÜME ANALİZİ (gerçek geotag verisinden):")
+                ok(f"Toplam geotag: {kl['toplam_geotag']} | Benzersiz bölge: {kl['benzersiz_bolge']}")
+                ok(f"En aktif bölge: {kl['en_aktif_bolge']} (x{kl['en_aktif_sayi']})")
+                ok(f"Merkez nokta: {kl['kumes_merkezi']} — {kl['harita']}")
+        elif merr:
+            hata(f"Medya alınamadı: {merr.get('error')} — anonim sayfalama engellenmiş olabilir.")
+        else:
+            hata("Gönderilerde geotag yok (kullanıcı konum etiketi kullanmıyor).")
+
+    # ---- 3) TELEFON TESPİTİ (yalnızca hesapta gerçekten açıksa; yoksa dürüst açıklama) ----
+    info("[TELEFON TESPİTİ] ...")
+    sess = get_active_session(ask=False)   # soru sormaz, kayıtlı oturum varsa kullanır
+    ek = {}
+    if sess:
+        ek_ = ig_user_info(user_id, sess["sessionid"])
+        if ek_:
+            for k in ("public_email", "public_phone_number", "public_phone_country_code",
+                      "city_name", "address_street", "zip", "external_url", "is_business", "category"):
+                if ek_.get(k):
+                    ek[k] = ek_.get(k)
+    if ek.get("public_phone_number"):
+        ok(f"Telefon (hesapta açıkça paylaşılmış): +{ek.get('public_phone_country_code','')}{ek['public_phone_number']}")
+    elif p.get("is_business"):
+        hata("İşletme hesabı ama telefon alanı kapalı veya oturum yok — IG bunu anonim açmaz (gerçek sınır).")
+    else:
+        hata("Kişisel hesap — IG telefon numarasını anonim açmaz. Telefon izi için menü 2'yi kullan.")
+    if ek:
+        sonuc["ek_bilgi"] = ek
+        for k, v in ek.items():
+            if k != "public_phone_number":
+                ok(f"{k:<26}: {v}")
+
+    # ---- 4) SDK + GUID + CİHAZ TESPİTİ (gerçek, her çalıştırmada üretilir) ----
+    info("[SDK / GUID / CİHAZ TESPİTİ] Mobil API'nin kullandığı gerçek kimlikler:")
+    dev = ig_device_report()
+    sonuc["cihaz"] = dev
+    print(GREEN + f"    SDK sürümü   : {dev['sdk_surum']}" + RESET)
+    print(GREEN + f"    Web App ID    : {dev['web_app_id']}" + RESET)
+    print(GREEN + f"    Mobil App ID  : {dev['mobile_app_id']}" + RESET)
+    print(GREEN + f"    GUID          : {dev['guid']}" + RESET)
+    print(GREEN + f"    Device ID     : {dev['device_id']}" + RESET)
+    print(GREEN + f"    Phone ID      : {dev['phone_id']}" + RESET)
+    print(GREEN + f"    IMEI (Luhn✓)  : {dev['imei']}" + RESET)
+    print(GREEN + f"    Android ID    : {dev['android_id']}" + RESET)
+    print(BLUE + f"    User-Agent    : {dev['user_agent'][:60]}..." + RESET)
+
+    # ---- 5) SERTİFİKA TESPİTİ (bağlantının canlı TLS sertifikası) ----
+    info("[SERTİFİKA TESPİTİ] i.instagram.com TLS sertifikası (canlı):")
+    cert = ssl_cert_info("i.instagram.com")
+    sonuc["sertifika"] = cert
+    print(GREEN + json.dumps(cert, ensure_ascii=False, indent=2) + RESET)
+
+    # ---- 6) Aynı kullanıcı adı diğer platformlarda (gerçek HTTP) ----
+    info("[USER TESPİTİ — diğer platformlar] ~46 site taranıyor...")
     pc = platform_checks(u, SITES, 10)
-    db_kaydet("platform_checks", u, pc)
-    for site, r2 in pc.items():
-        if r2["durum"].startswith("BULUNDU"):
-            ok(f"{site:<12} {r2['durum']:<10} {r2['url']}")
+    sonuc["platformlar"] = pc
+    bul = {s: r for s, r in pc.items() if r["durum"].startswith("BULUNDU")}
+    for s, r in bul.items():
+        ok(f"{s:<12} {r['durum']:<10} {r['url']}")
+    if not bul:
+        hata("Diğer platformlarda aynı kullanıcı adıyla hesap bulunamadı.")
+
+    db_kaydet("ig_username", u, sonuc)
+    ok("Kayıt veritabanına eklendi (menü 18).")
 
 def opt_phone():
     line("=")
@@ -1310,7 +1527,7 @@ def opt_phone():
     pl = phone_lookup(tel, ulke)
     print(BLUE + "\n[+] Telefon bilgisi:" + RESET)
     print(GREEN + json.dumps(pl, ensure_ascii=False, indent=2) + RESET)
-    e164 = pl.get("phone_e164") or re.sub(r"\D", "", tel)
+    e164 = pl.get("e164") or re.sub(r"\D", "", tel)
     nat = pl.get("national_format")
     web_iz = []
     if pl.get("phone_valid"):
