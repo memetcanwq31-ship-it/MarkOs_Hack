@@ -2,13 +2,31 @@ import os
 import sys
 import json
 import time
+import re
 from datetime import datetime
+
+try:
+    from colorama import Fore, Style, init
+    init(autoreset=True)
+except ImportError:
+    class Dummy:
+        RED = ""
+        RESET_ALL = ""
+
+    Fore = Dummy()
+    Style = Dummy()
+
 
 # ================================================================
 # DELTA 007 - LOCAL CORE ENGINE
 # ================================================================
 
 DB_FILE = "delta007_data.json"
+
+
+# ================================================================
+# BANNER
+# ================================================================
 
 BANNER = r"""
 ██████╗ ███████╗██╗     ████████╗ █████╗
@@ -24,24 +42,72 @@ BANNER = r"""
 
 
 # ================================================================
+# OYUNLAR
+# ================================================================
+
+GAMES = {
+    "1": {
+        "name": "eFootball",
+        "identity": "Kullanıcı Kimliği",
+        "currency": "Coins"
+    },
+
+    "2": {
+        "name": "PUBG Mobile",
+        "identity": "Oyuncu ID",
+        "currency": "UC"
+    },
+
+    "3": {
+        "name": "Brawl Stars",
+        "identity": "UserID",
+        "currency": "Elmas"
+    }
+}
+
+
+# ================================================================
 # DATABASE
 # ================================================================
+
+def default_database():
+
+    return {
+        "system": {
+            "name": "DELTA 007",
+            "version": "1.2",
+            "created": str(datetime.now())
+        },
+
+        "profiles": {
+
+            "eFootball": {
+                "identity_type": "Kullanıcı Kimliği",
+                "identity": "ASGF-330-818-095"
+            },
+
+            "PUBG Mobile": {
+                "identity_type": "Oyuncu ID",
+                "identity": None
+            },
+
+            "Brawl Stars": {
+                "identity_type": "UserID",
+                "identity": None
+            }
+        },
+
+        "transactions": []
+    }
+
 
 def init_database():
 
     if not os.path.exists(DB_FILE):
 
-        database = {
-            "system": {
-                "name": "DELTA 007",
-                "version": "1.2",
-                "created": str(datetime.now())
-            },
-
-            "transactions": []
-        }
-
-        save_database(database)
+        save_database(
+            default_database()
+        )
 
 
 def load_database():
@@ -61,14 +127,7 @@ def load_database():
         json.JSONDecodeError
     ):
 
-        database = {
-            "system": {
-                "name": "DELTA 007",
-                "version": "1.2",
-                "created": str(datetime.now())
-            },
-            "transactions": []
-        }
+        database = default_database()
 
         save_database(database)
 
@@ -92,7 +151,7 @@ def save_database(database):
 
 
 # ================================================================
-# SCREEN
+# EKRAN
 # ================================================================
 
 def clear_screen():
@@ -104,116 +163,326 @@ def clear_screen():
     )
 
 
+def print_banner():
+
+    print(
+        Fore.RED + BANNER + Style.RESET_ALL
+    )
+
+
 # ================================================================
-# GAME SELECTION
+# ID DOĞRULAMA
 # ================================================================
 
-def choose_game_type():
+def validate_identity(
+    game,
+    identity
+):
+
+    if not identity:
+        return False
+
+    identity = identity.strip()
+
+    if game == "eFootball":
+
+        pattern = (
+            r"^[A-Z0-9]{4}-"
+            r"[A-Z0-9]{3}-"
+            r"[A-Z0-9]{3}-"
+            r"[A-Z0-9]{3}$"
+        )
+
+        return bool(
+            re.fullmatch(
+                pattern,
+                identity.upper()
+            )
+        )
+
+    elif game == "PUBG Mobile":
+
+        return bool(
+            re.fullmatch(
+                r"[0-9]{5,20}",
+                identity
+            )
+        )
+
+    elif game == "Brawl Stars":
+
+        return bool(
+            re.fullmatch(
+                r"#[A-Za-z0-9]{3,15}",
+                identity
+            )
+        )
+
+    return False
+
+
+# ================================================================
+# MİKTAR DOĞRULAMA
+# ================================================================
+
+def validate_amount(value):
+
+    try:
+
+        amount = int(value)
+
+        if amount <= 0:
+            return None
+
+        return amount
+
+    except ValueError:
+
+        return None
+
+
+# ================================================================
+# OYUN SEÇİMİ
+# ================================================================
+
+def choose_game():
 
     print("\n==============================")
     print("          OYUN TÜRÜ")
     print("==============================")
 
-    print("1. eFootball Kimliği")
-    print("2. PUBG Mobile ID")
-    print("3. Brawl Stars UserID")
+    print("1. eFootball      → Coins")
+    print("2. PUBG Mobile    → UC")
+    print("3. Brawl Stars    → Elmas")
     print("0. Geri")
 
     choice = input(
         "\nDELTA-007 > "
     ).strip()
 
-    game_types = {
-
-        "1": {
-            "game": "eFootball",
-            "identity_type": "Oyuncu Kimliği"
-        },
-
-        "2": {
-            "game": "PUBG Mobile",
-            "identity_type": "Oyuncu ID"
-        },
-
-        "3": {
-            "game": "Brawl Stars",
-            "identity_type": "UserID"
-        }
-    }
-
-    return game_types.get(choice)
+    return GAMES.get(choice)
 
 
 # ================================================================
-# CREATE TRANSACTION
+# PROFİLLER
 # ================================================================
 
-def create_transaction():
+def show_profiles():
 
-    game_info = choose_game_type()
+    database = load_database()
+
+    print(
+        "\n================ PROFİLLER ================\n"
+    )
+
+    for game, profile in database[
+        "profiles"
+    ].items():
+
+        identity = (
+            profile["identity"]
+            if profile["identity"]
+            else "Kayıtlı değil"
+        )
+
+        print(
+            f"{game:<15} | "
+            f"{profile['identity_type']:<20} | "
+            f"{identity}"
+        )
+
+
+# ================================================================
+# KİMLİK KAYDET
+# ================================================================
+
+def set_identity():
+
+    game_info = choose_game()
 
     if game_info is None:
-
         return
 
-    game = game_info["game"]
+    game = game_info["name"]
 
     identity_type = game_info[
-        "identity_type"
+        "identity"
     ]
 
-    print("\n==============================")
-
     print(
-        f"Oyun: {game}"
+        f"\n[*] Oyun: {game}"
     )
 
     print(
-        f"Kimlik türü: {identity_type}"
+        f"[*] Bilgi türü: {identity_type}"
     )
-
-    print("==============================")
 
     identity = input(
-        f"\n{identity_type}: "
+        f"{identity_type}: "
     ).strip()
 
     if not identity:
 
         print(
-            "\n[-] Kimlik bilgisi boş bırakılamaz."
+            "\n[-] HATA: Bilgi boş bırakılamaz."
         )
 
         time.sleep(2)
-
         return
 
-    try:
+    if not validate_identity(
+        game,
+        identity
+    ):
 
-        amount = int(
-            input(
-                "\nGönderilecek miktar: "
+        print(
+            "\n[-] HATA: ID / kimlik formatı geçersiz."
+        )
+
+        time.sleep(2)
+        return
+
+    database = load_database()
+
+    database[
+        "profiles"
+    ][game][
+        "identity"
+    ] = identity
+
+    save_database(database)
+
+    print(
+        "\n[+] Kimlik kaydedildi."
+    )
+
+    time.sleep(2)
+
+
+# ================================================================
+# YENİ İŞLEM
+# ================================================================
+
+def create_transaction():
+
+    game_info = choose_game()
+
+    if game_info is None:
+        return
+
+    game = game_info["name"]
+
+    identity_type = game_info[
+        "identity"
+    ]
+
+    currency = game_info[
+        "currency"
+    ]
+
+    database = load_database()
+
+    saved_identity = database[
+        "profiles"
+    ][game][
+        "identity"
+    ]
+
+    print(
+        "\n=============================="
+    )
+
+    print(
+        f"Oyun        : {game}"
+    )
+
+    print(
+        f"Kimlik      : {identity_type}"
+    )
+
+    print(
+        f"Para birimi : {currency}"
+    )
+
+    print(
+        "=============================="
+    )
+
+    if saved_identity:
+
+        print(
+            f"\nKayıtlı {identity_type}: "
+            f"{saved_identity}"
+        )
+
+        change = input(
+            "Başka bir ID kullanmak ister misin? "
+            "(e/h): "
+        ).strip().lower()
+
+        if change == "h":
+
+            identity = saved_identity
+
+        elif change == "e":
+
+            identity = input(
+                f"{identity_type}: "
             ).strip()
-        )
 
-    except ValueError:
+        else:
+
+            print(
+                "\n[-] Hatalı seçim."
+            )
+
+            time.sleep(2)
+            return
+
+    else:
+
+        identity = input(
+            f"{identity_type}: "
+        ).strip()
+
+    # Kimlik kontrolü
+    if not identity:
 
         print(
-            "\n[-] Miktar sayısal olmalıdır."
+            "\n[-] HATA: Kimlik bilgisi eksik."
         )
 
         time.sleep(2)
-
         return
 
-    if amount <= 0:
+    if not validate_identity(
+        game,
+        identity
+    ):
 
         print(
-            "\n[-] Miktar 0'dan büyük olmalıdır."
+            "\n[-] HATA: Kimlik formatı yanlış veya eksik."
         )
 
         time.sleep(2)
+        return
 
+    # Miktar
+    amount_text = input(
+        f"\nGönderilecek {currency} miktarı: "
+    ).strip()
+
+    amount = validate_amount(
+        amount_text
+    )
+
+    if amount is None:
+
+        print(
+            f"\n[-] HATA: Geçerli bir {currency} miktarı girin."
+        )
+
+        time.sleep(2)
         return
 
     print(
@@ -239,16 +508,16 @@ def create_transaction():
 
         "game": game,
 
-        "recipient_type": identity_type,
+        "identity_type": identity_type,
 
         "recipient": identity,
+
+        "currency": currency,
 
         "amount": amount,
 
         "status": "LOCAL_TEST"
     }
-
-    database = load_database()
 
     database[
         "transactions"
@@ -273,7 +542,7 @@ def create_transaction():
     )
 
     print(
-        f"Kimlik Türü: {identity_type}"
+        f"Alıcı türü : {identity_type}"
     )
 
     print(
@@ -281,7 +550,7 @@ def create_transaction():
     )
 
     print(
-        f"Miktar     : {amount}"
+        f"Miktar     : {amount} {currency}"
     )
 
     print(
@@ -302,7 +571,7 @@ def create_transaction():
 
 
 # ================================================================
-# HISTORY
+# GEÇMİŞ
 # ================================================================
 
 def show_history():
@@ -315,7 +584,7 @@ def show_history():
 
     clear_screen()
 
-    print(BANNER)
+    print_banner()
 
     print(
         "\n================ İŞLEM GEÇMİŞİ ================\n"
@@ -346,8 +615,8 @@ def show_history():
         )
 
         print(
-            f"Kimlik Türü: "
-            f"{transaction['recipient_type']}"
+            f"Alıcı türü : "
+            f"{transaction['identity_type']}"
         )
 
         print(
@@ -357,7 +626,8 @@ def show_history():
 
         print(
             f"Miktar     : "
-            f"{transaction['amount']}"
+            f"{transaction['amount']} "
+            f"{transaction['currency']}"
         )
 
         print(
@@ -380,7 +650,7 @@ def show_history():
 
 
 # ================================================================
-# STATISTICS
+# İSTATİSTİK
 # ================================================================
 
 def show_statistics():
@@ -391,33 +661,46 @@ def show_statistics():
         "transactions"
     ]
 
-    total_transactions = len(
-        transactions
-    )
-
-    total_amount = sum(
-        transaction["amount"]
-        for transaction in transactions
-    )
-
     clear_screen()
 
-    print(BANNER)
+    print_banner()
 
     print(
         "\n================ İSTATİSTİKLER ================\n"
     )
 
     print(
-        f"Toplam işlem : {total_transactions}"
+        f"Toplam işlem: {len(transactions)}"
     )
 
-    print(
-        f"Toplam miktar: {total_amount}"
-    )
+    currencies = {}
+
+    for transaction in transactions:
+
+        currency = transaction[
+            "currency"
+        ]
+
+        currencies[currency] = (
+            currencies.get(
+                currency,
+                0
+            )
+            + transaction["amount"]
+        )
+
+    if currencies:
+
+        print("\nToplamlar:")
+
+        for currency, amount in currencies.items():
+
+            print(
+                f"- {currency}: {amount}"
+            )
 
     print(
-        f"\nVeritabanı   : "
+        f"\nVeritabanı: "
         f"{os.path.abspath(DB_FILE)}"
     )
 
@@ -438,7 +721,7 @@ def main():
 
         clear_screen()
 
-        print(BANNER)
+        print_banner()
 
         print(
             "================================================"
@@ -452,18 +735,26 @@ def main():
             "================================================"
         )
 
-        print()
+        show_profiles()
+
+        print(
+            "\n================ ANA MENÜ ================\n"
+        )
 
         print(
             "1. Yeni işlem"
         )
 
         print(
-            "2. İşlem geçmişi"
+            "2. Kimlik ekle/değiştir"
         )
 
         print(
-            "3. İstatistikler"
+            "3. İşlem geçmişi"
+        )
+
+        print(
+            "4. İstatistikler"
         )
 
         print(
@@ -480,9 +771,13 @@ def main():
 
         elif choice == "2":
 
-            show_history()
+            set_identity()
 
         elif choice == "3":
+
+            show_history()
+
+        elif choice == "4":
 
             show_statistics()
 
@@ -499,7 +794,7 @@ def main():
         else:
 
             print(
-                "\n[-] Geçersiz seçim."
+                "\n[-] Hatalı menü seçimi."
             )
 
             time.sleep(1)
