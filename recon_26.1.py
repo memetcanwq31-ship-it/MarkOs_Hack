@@ -28,7 +28,7 @@ def temizle():
 
 def banner():
     print(f"{R}{B}{'='*64}")
-    print(f"{R}{B}   GERÇEK OSINT RECON — canlı sorgu, simülasyon yok")
+    print(f"{R}{B}   OSINT RECON — canlı sorgu, ")
     print(f"{R}{B}{'='*64}{S}")
 
 
