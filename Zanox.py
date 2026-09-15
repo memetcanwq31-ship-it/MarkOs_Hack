@@ -1,15 +1,11 @@
-# =====================================================================
-#  ZANØX THREAT INTEL CORE v6.0 — FINAL / TAM ÇALIŞAN SÜRÜM
-#  Mimar: Zanøx77k (Profesör Mehmet) — 2026
-#
-#  TERMUX/ANDROID/LINUX UYUMLU, %100 HTTPS TABANLI.
-#  HİÇBİR SİSTEM DOSYASINA / ZOR DERLEMEYE BAĞIMLI DEĞİL.
-#
-#  Bağımlılık (Termux'ta kurulu olmalı):  httpx , rich
-#  Kurulum:   pip install -U httpx rich
-# =====================================================================
-import os, re, ssl, socket, json, asyncio, time, urllib.request
+# Zanøx Threat Intel Core — Geliştirilmiş WAF & Vulnerability Detector
+# Dosya: zanox_core_enhanced.py
+# Gereksinimler: python3.8+, pip install -U httpx rich
+# Ortam değişkenleri (isteğe bağlı): SHODAN_API_KEY, VIRUSTOTAL_API_KEY, NVD_API_KEY
+
+import os, re, ssl, socket, json, asyncio, time, urllib.request, subprocess, shlex
 from datetime import datetime
+from urllib.parse import quote_plus
 
 import httpx
 from rich.console import Console
@@ -17,23 +13,22 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich import box
+import difflib
 
 console = Console()
 RST="\033[0m"; YEL="\033[93m"; CYAN="\033[96m"; RED="\033[91m"
 
-VERSION = "2026.7.0-r6"
-AUTHOR  = "Zanøx77k (Profesör Mehmet)"
+VERSION = "2026.7.0-r6+enh"
+AUTHOR  = "Zanøx77k (Profesör Mehmet) + Enhancements"
 
 SHODAN_KEY = os.environ.get("SHODAN_API_KEY","")
 VT_KEY     = os.environ.get("VIRUSTOTAL_API_KEY","")
+NVD_KEY    = os.environ.get("NVD_API_KEY","")  # opsiyonel
 
-# ---------------------------------------------------------------------
-# BÖLÜM 1 — HTTPS-DNS ÇÖZÜMLEYİCİ (Google DoH) — UDP 53 GEREKMEZ
-# ---------------------------------------------------------------------
 DNS_TYPES = {"A":1,"AAAA":28,"MX":15,"NS":2,"TXT":16,"CNAME":5,"SOA":6}
 
+# ---------- Helper: DoH ----------
 def dns_query(name, rtype):
-    """Google DoH ile gerçek DNS kayıtlarını JSON olarak alır."""
     t = DNS_TYPES.get(rtype, 1)
     url = f"https://dns.google/resolve?name={name}&type={t}"
     req = urllib.request.Request(url, headers={"User-Agent":"Mozilla/5.0 Zanox"})
@@ -54,7 +49,6 @@ def dns_query(name, rtype):
         elif t == 15:res.append(("MX", val))
         elif t == 16:res.append(("TXT", val.replace('"','')))
         elif t == 6: res.append(("SOA", val))
-    # A ararken sadece CNAME döndüyse zinciri takip et
     if t == 1 and not res:
         for a in j.get("Answer", []):
             if a.get("type") == 5:
@@ -62,7 +56,6 @@ def dns_query(name, rtype):
     return res
 
 def get_ip(host):
-    """Önce DoH, olmazsa işletim sistemi çözücüsü. Hep gerçek IP döndürür."""
     try:
         for _, ip in dns_query(host, "A"):
             if ip: return ip
@@ -73,9 +66,7 @@ def get_ip(host):
     except Exception:
         return None
 
-# ---------------------------------------------------------------------
-# HEDEF PORTLAR + WAF İMZALARI + ALT ALAN SÖZLÜĞÜ
-# ---------------------------------------------------------------------
+# ---------- Konfigürasyon ----------
 TARGET_PORTS = {
     21:"FTP",22:"SSH",23:"Telnet",25:"SMTP",53:"DNS",80:"HTTP",
     110:"POP3",143:"IMAP",443:"HTTPS",445:"SMB",993:"IMAPS",
@@ -83,28 +74,30 @@ TARGET_PORTS = {
     5432:"PostgreSQL",5900:"VNC",6379:"Redis",8080:"HTTP-Alt",
     8443:"HTTPS-Alt",9200:"Elasticsearch",27017:"MongoDB"}
 
+# Genişletilmiş WAF imzaları (başlık, çerez, içerik parçaları)
 WAF_SIGS = {
-    "Cloudflare":  ["__cfduid","__cf_bm","cf-ray","cf-chl","cloudflare"],
-    "Akamai":      ["ak_bmsc","_abck","bm_sz","akamai"],
-    "AWS WAF":     ["awswaf"],
+    "Cloudflare":  ["__cfduid","__cf_bm","cf-ray","cf-chl","cloudflare","cf-cache-status"],
+    "Akamai":      ["ak_bmsc","_abck","bm_sz","akamai","akamaiedge"],
+    "AWS WAF":     ["awswaf","x-amzn-requestid","x-amzn-trace-id"],
     "Sucuri":      ["sucuri","x-sucuri-id"],
-    "Barracuda":   ["barra_counter_session"],
-    "Imperva":     ["incap_ses","visid_incap","x-iinfo"],
-    "F5 BIG-IP":   ["bigipserver","ts_","x-wa-info"],
-    "ModSecurity": ["mod_security"],
-    "Radware":     ["rdwr"],
-    "Citrix NS":   ["netscaler"],
-    "Fortinet":    ["fortiwaf"],
+    "Barracuda":   ["barra_counter_session","barracuda"],
+    "Imperva":     ["incap_ses","visid_incap","x-iinfo","imperva"],
+    "F5 BIG-IP":   ["bigipserver","ts_","x-wa-info","f5"],
+    "ModSecurity": ["mod_security","mod_sec"],
+    "Radware":     ["rdwr","radware"],
+    "Citrix NS":   ["netscaler","citrix"],
+    "Fortinet":    ["fortiwaf","fgt_cookie"],
     "Varnish":     ["x-varnish","varnish"],
-    "Wordfence":   ["wordfence"]}
+    "Wordfence":   ["wordfence"],
+    "Palo Alto":   ["pan-remote","paloalto"],
+    "CloudFront":  ["cloudfront","x-cache","x-amz-cf-id"]
+}
 
 SUBDOMAINS = ["www","api","app","mail","smtp","pop","ns1","ns2","admin",
     "dev","test","stage","beta","shop","store","blog","ftp","vpn","panel",
     "webmail","git","ci","monitor","dashboard","old","new","cdn","static"]
 
-# ---------------------------------------------------------------------
-# BÖLÜM 2 — DNS + RDAP + ALT ALAN KEŞFİ
-# ---------------------------------------------------------------------
+# ---------- DNS/RDAP/ALT ADLARI ----------
 async def dns_enrich(host, dst):
     for tname in ["A","AAAA","MX","NS","TXT","CNAME","SOA"]:
         try:
@@ -126,13 +119,11 @@ async def rdap_lookup(host, dst):
             dst.add_row("RDAP / Alan", j.get("ldhName", host), "RDAP", "kayıt doğrulandı")
             ev = j.get("events", [{}])
             if ev: dst.add_row("RDAP / Kayıt Tarihi", str(ev[0].get("eventDate","-"))[:19], "RDAP", "oluşturma")
-            # Kayıt sahibi kuruluş
             for e in j.get("entities", []):
                 vc = e.get("vcardArray", [[],[]])
                 if len(vc) > 1 and vc[1]:
                     dst.add_row("RDAP / Kayıt Sahibi", str(vc[1][0][3])[:80], "RDAP", "kurum")
                     break
-            # NS kayıtları RDAP'tan da gelebilir
             ns = [n.get("ldhName","") for n in j.get("nameservers",[])]
             if ns: dst.add_row("RDAP / NS", ", ".join(ns), "RDAP", "ad sunucuları")
         else:
@@ -142,7 +133,6 @@ async def rdap_lookup(host, dst):
 
 async def subdomain_discovery(host, dst):
     found = set()
-    # 1) Sertifika Şeffaflığı (crt.sh) — pasif, hızlı
     try:
         async with httpx.AsyncClient(timeout=12, verify=False) as c:
             r = await c.get(f"https://crt.sh/?q=%25.{host}&output=json")
@@ -154,7 +144,6 @@ async def subdomain_discovery(host, dst):
                         found.add(nm)
     except Exception:
         pass
-    # 2) Sözlük taraması (DoH üzerinden) — güvenli
     for s in SUBDOMAINS:
         cand = f"{s}.{host}"
         if cand in found: continue
@@ -170,9 +159,7 @@ async def subdomain_discovery(host, dst):
     else:
         dst.add_row("Alt Alan Adları", "[dim]bulunamadı[/dim]", "crt.sh+DoH", "-")
 
-# ---------------------------------------------------------------------
-# BÖLÜM 3 — PORT + BANNER (gerçek soket taraması)
-# ---------------------------------------------------------------------
+# ---------- Port & Banner ----------
 async def banner_grab(host, port):
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), 4)
@@ -185,13 +172,13 @@ async def banner_grab(host, port):
         except Exception:
             pass
         try:
-            data = await asyncio.wait_for(reader.read(200), 3)
+            data = await asyncio.wait_for(reader.read(400), 3)
         except Exception:
             data = b""
         writer.close()
         try: await writer.wait_closed()
         except Exception: pass
-        txt = data.decode("utf-8","ignore").strip().replace("\n"," | ")[:120]
+        txt = data.decode("utf-8","ignore").strip().replace("\n"," | ")[:240]
         return txt or "(sessiz servis)"
     except Exception:
         return "(yanıtsız)"
@@ -213,53 +200,72 @@ async def run_probe(sem, ip, port, svc, dst):
             dst.add_row(f"[dim]Port {port}[/]", "[red]KAPALI[/red]", "---", svc)
 
 async def scan_ports(ip, dst):
-    if not ip: 
+    if not ip:
         dst.add_row("Port Taraması", "[red]IP yok, tarama atlandı[/red]", "-", "-")
         return
     sem = asyncio.Semaphore(50)
     await asyncio.gather(*[run_probe(sem, ip, p, s, dst) for p, s in TARGET_PORTS.items()])
 
-# ---------------------------------------------------------------------
-# BÖLÜM 4 — WAF + GÜVENLİK BAŞLIKLARI + SCRIPT RİSKİ
-# ---------------------------------------------------------------------
-def waf_detect(headers, cookies):
+# ---------- WAF & Başlık Analizi (Gelişmiş) ----------
+def waf_detect(headers, cookies, body):
     h = " ".join(f"{k}:{v}" for k,v in headers.items()).lower()
     c = " ".join(cookies).lower()
+    b = (body or "").lower()
     out = []
     for w, sigs in WAF_SIGS.items():
-        if any(s.lower() in h or s.lower() in c for s in sigs):
+        if any(s.lower() in h or s.lower() in c or s.lower() in b for s in sigs):
             out.append(w)
     return list(dict.fromkeys(out))
 
+def body_similarity(a, b):
+    if not a or not b: return 0.0
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
 async def probe_waf(host, dst):
     url = f"https://{host}"
+    client = httpx.AsyncClient(timeout=12, verify=False, follow_redirects=True)
     try:
-        async with httpx.AsyncClient(timeout=10, verify=False, follow_redirects=True) as c:
-            r1 = await c.get(url, headers={"User-Agent":"Mozilla/5.0 (Zanox Intel)"})
-            r2 = await c.get(url + "/?q=<script>alert(1)</script>",
-                             headers={"User-Agent":"Mozilla/5.0 (Zanox Intel)"})
-        w1 = waf_detect(r1.headers, r1.cookies.values())
-        w2 = waf_detect(r2.headers, r2.cookies.values())
-        tespit = list(dict.fromkeys(w1+w2))
-        anom = r1.status_code != r2.status_code
-        blok = any(x in (r2.text or "").lower() for x in
-            ["access denied","forbidden","blocked","verify you are human","attention required","security check"])
-        if tespit: durum = f"[bold red]WAF TESPİTİ: {', '.join(tespit)}[/]"
-        elif blok or anom: durum = "[bold yellow]WAF davranışı (anonim blok/anomali)[/]"
-        else: durum = "[dim]Belirgin WAF imzası yok[/]"
+        # Payload set: baseline, XSS, SQLi, path-traversal, weird headers/UA
+        baseline = await client.get(url, headers={"User-Agent":"Mozilla/5.0 (Zanox Intel) baseline"})
+        xss = await client.get(url + "/?q=<script>alert(1)</script>", headers={"User-Agent":"Mozilla/5.0 (Zanox Intel) xss"})
+        sqli = await client.get(url + "/?id=1' OR '1'='1", headers={"User-Agent":"Mozilla/5.0 (Zanox Intel) sqli"})
+        weird = await client.get(url, headers={"User-Agent":"ZanoxScanner/1.0", "X-Forwarded-For":"127.0.0.1"})
+        # Compare status codes and body similarity
+        sim_xss = body_similarity(baseline.text, xss.text)
+        sim_sqli = body_similarity(baseline.text, sqli.text)
+        sim_weird = body_similarity(baseline.text, weird.text)
+        # Header & cookie detection
+        w1 = waf_detect(baseline.headers, baseline.cookies.values(), baseline.text)
+        w2 = waf_detect(xss.headers, xss.cookies.values(), xss.text)
+        tespit = list(dict.fromkeys(w1 + w2))
+        anom = (baseline.status_code != xss.status_code) or (baseline.status_code != sqli.status_code)
+        blok_keywords = ["access denied","forbidden","blocked","verify you are human","attention required","security check","challenge","captcha"]
+        blok = any(k in (xss.text or "").lower() for k in blok_keywords)
+        # Heuristics
+        reasons = []
+        if tespit: reasons.append("imza")
+        if anom or blok: reasons.append("davranışsal")
+        if sim_xss < 0.6 or sim_sqli < 0.6:
+            reasons.append("içerik-farkı (filtering)")
+        if reasons:
+            durum = f"[bold red]WAF TESPİTİ: {', '.join(tespit) if tespit else 'anonim'} ({', '.join(set(reasons))})[/]"
+        else:
+            durum = "[dim]Belirgin WAF imzası yok[/]"
         dst.add_row("Güvenlik Duvarı (WAF)", durum, "Davranışsal",
-                    f"HTTP {r1.status_code}→{r2.status_code} | Server: {r1.headers.get('server','-')}")
-
-        # Güvenlik başlıkları
+                    f"HTTP {baseline.status_code}→{xss.status_code}|sim_xss={sim_xss:.2f}|sim_sqli={sim_sqli:.2f} | Server: {baseline.headers.get('server','-')}")
+        # Güvenlik başlıkları (geliştirilmiş)
         sec = {"Strict-Transport-Security":"HSTS","Content-Security-Policy":"CSP",
                "X-Frame-Options":"ClickJacking","X-Content-Type-Options":"MIME-Sniff",
-               "Referrer-Policy":"Referrer","Permissions-Policy":"Feature"}
+               "Referrer-Policy":"Referrer","Permissions-Policy":"Feature", "Expect-CT":"Expect-CT"}
         for h, a in sec.items():
-            v = r1.headers.get(h)
-            dst.add_row(f"Başlık {h}", (f"[green]{v[:60]}[/]" if v else "[red]EKSİK[/]"), "Header", a)
-
-        # Script / kaynak taraması
-        body = r1.text or ""
+            v = baseline.headers.get(h)
+            dst.add_row(f"Başlık {h}", (f"[green]{v[:80]}[/]" if v else "[red]EKSİK[/]"), "Header", a)
+        # CDN / Cache hints
+        for hdr in ("via","x-cache","x-amz-cf-pop","x-cdn","server"):
+            if baseline.headers.get(hdr):
+                dst.add_row(f"Header {hdr}", baseline.headers.get(hdr), "Header", "cdn/waf-ipuç")
+        # Script risk
+        body = baseline.text or ""
         scr = re.findall(r'<script[^>]*src=["\']([^"\']+)["\']', body, re.I)
         dst.add_row("Harici Script Sayısı", f"{len(scr)} adet", "Statik", "kaynak taraması")
         if any(k in body.lower() for k in ["eval(","unescape(","document.write(","innerhtml="]):
@@ -268,10 +274,10 @@ async def probe_waf(host, dst):
             dst.add_row("Dinamik Kod Riski", "[green]temiz görünüyor[/]", "Statik", "-")
     except Exception:
         dst.add_row("Güvenlik Duvarı (WAF)", "[red]https yanıtı alınamadı[/]", "HTTP", "-")
+    finally:
+        await client.aclose()
 
-# ---------------------------------------------------------------------
-# BÖLÜM 5 — TLS / SERTİFİKA (standart ssl, harici derleme yok)
-# ---------------------------------------------------------------------
+# ---------- TLS / Sertifika (ayrıntılı) ----------
 async def tls_analysis(host, dst):
     try:
         ctx = ssl.create_default_context()
@@ -295,9 +301,7 @@ async def tls_analysis(host, dst):
     except Exception:
         dst.add_row("TLS Sertifika", "[dim]443 kapalı / el sıkışma yok[/dim]", "Handshake", "-")
 
-# ---------------------------------------------------------------------
-# BÖLÜM 6 — HARİCİ OSINT (Shodan / VirusTotal — anahtar varsa)
-# ---------------------------------------------------------------------
+# ---------- Harici OSINT (Shodan/VT) ----------
 async def external_osint(host, dst, ip):
     if not ip: return
     if SHODAN_KEY:
@@ -328,9 +332,115 @@ async def external_osint(host, dst, ip):
         except Exception:
             dst.add_row("VirusTotal", "[dim]erişilemedi[/dim]", "VT API", "anahtar hatalı olabilir")
 
-# ---------------------------------------------------------------------
-# BÖLÜM 7 — ORKESTRASYON (her modül korumalı; biri patlarsa devam eder)
-# ---------------------------------------------------------------------
+# ---------- Banner -> Product/Version Extraction ----------
+def extract_product_versions(text):
+    # Basit regex'lerle common "product/version" kalıplarını yakala
+    findings = []
+    if not text: return findings
+    patterns = [
+        r"([A-Za-z0-9\-\_]+)[/ ]([0-9]+\.[0-9]+(?:\.[0-9]+)?)",
+        r"([A-Za-z\-\_]+)[/ ]v?([0-9]+\.[0-9]+)"
+    ]
+    for p in patterns:
+        for m in re.finditer(p, text):
+            prod = m.group(1).strip()
+            ver = m.group(2).strip()
+            if len(prod) <= 40:
+                findings.append((prod,ver))
+    # unique
+    seen = []
+    out = []
+    for p,v in findings:
+        key = f"{p.lower()}:{v}"
+        if key not in seen:
+            seen.append(key); out.append((p,v))
+    return out
+
+# ---------- CVE (NVD) lookup (basit keyword search) ----------
+async def cve_lookup(keyword):
+    # NVD Search endpoint: keyword search. Rate limits apply.
+    q = quote_plus(keyword)
+    url = f"https://services.nvd.nist.gov/rest/json/cves/1.0?keyword={q}&resultsPerPage=5"
+    headers = {}
+    if NVD_KEY:
+        headers["apiKey"] = NVD_KEY
+    try:
+        async with httpx.AsyncClient(timeout=12) as c:
+            r = await c.get(url, headers=headers)
+        if r.status_code == 200:
+            j = r.json()
+            total = j.get("totalResults",0)
+            items = j.get("result",{}).get("CVE_Items",[])[:5]
+            out = []
+            for it in items:
+                cve = it.get("cve",{}).get("CVE_data_meta",{}).get("ID","-")
+                descs = it.get("cve",{}).get("description",{}).get("description_data",[])
+                desc = descs[0].get("value","-") if descs else "-"
+                out.append({"id":cve, "desc":desc})
+            return {"total": total, "items": out}
+    except Exception:
+        pass
+    return None
+
+async def vuln_scan_from_banners(banners_texts, dst):
+    # banners_texts: list of strings to analyze
+    seen = set()
+    for t in banners_texts:
+        for p,v in extract_product_versions(t):
+            key = f"{p} {v}"
+            if key in seen: continue
+            seen.add(key)
+            dst.add_row("Servis Sürümü", f"{p} {v}", "Banner", "sürüm tespiti")
+            # CVE sorgusu (asenkron)
+            try:
+                res = await cve_lookup(f"{p} {v}")
+                if res and res.get("total",0) > 0:
+                    items = res.get("items",[])
+                    short = ", ".join(i["id"] for i in items) if items else "çok sayıda"
+                    dst.add_row("Olası CVE", short, "NVD", f"{res.get('total',0)} eşleşme (ilk {len(items)} listelendi)")
+                else:
+                    dst.add_row("Olası CVE", "eşleşme yok (kısıtlı arama)", "NVD", "-")
+            except Exception:
+                dst.add_row("Olası CVE", "[dim]NVD erişilemedi[/dim]", "NVD", "-")
+
+# ---------- Basit yerel audit (opsiyonel; local çalıştırılmalı) ----------
+def run_local_audit(dst):
+    # Bu fonksiyon sunucuda doğrudan çalıştırılmalı — uzaktan sistem içi kötü yazılım tespiti yapılamaz.
+    dst.add_row("Yerel Taramaya Not", "Bu tarama hedef makinede çalıştırılmalıdır (local).", "Local-Audit", "-")
+    suspicious_names = ["minerd","xmrig","cryptonight","kworker","sshpass","meterpreter","smbd","nc","netcat","bash","curl","wget"]
+    # 1) proses listesi (ps)
+    try:
+        out = subprocess.check_output(shlex.split("ps aux"), stderr=subprocess.DEVNULL).decode(errors="ignore")
+        hits = []
+        for s in suspicious_names:
+            if re.search(r"\b"+re.escape(s)+r"\b", out, re.I):
+                hits.append(s)
+        dst.add_row("Şüpheli Prosesler", ", ".join(hits) if hits else "bulunamadı", "Local ps", "-")
+    except Exception:
+        dst.add_row("Şüpheli Prosesler", "[dim]ps okunamadı[/dim]", "Local ps", "-")
+    # 2) autorun dosyaları
+    paths = ["/etc/rc.local","/etc/cron.d/","/var/spool/cron/","~/.config/autostart/"]
+    found = []
+    for p in paths:
+        p2 = os.path.expanduser(p)
+        if os.path.exists(p2):
+            try:
+                found.append(p2)
+            except Exception:
+                pass
+    dst.add_row("Autorun İzleri", ", ".join(found) if found else "bulunamadı", "Local FS", "-")
+    # 3) dinleyen portlar (ss veya netstat)
+    try:
+        ss = subprocess.check_output(shlex.split("ss -ltnp"), stderr=subprocess.DEVNULL).decode(errors="ignore")
+        dst.add_row("Dinleyen TCP (ss)", ss.splitlines()[1:6] if ss else "[dim]yok[/dim]", "Local net", "-")
+    except Exception:
+        try:
+            ns = subprocess.check_output(shlex.split("netstat -ltnp"), stderr=subprocess.DEVNULL).decode(errors="ignore")
+            dst.add_row("Dinleyen TCP (netstat)", ns.splitlines()[1:6] if ns else "[dim]yok[/dim]", "Local net", "-")
+        except Exception:
+            dst.add_row("Dinleyen TCP", "[dim]ss/netstat yok veya yetki yetersiz[/dim]", "Local net", "-")
+
+# ---------- Orkestrasyon (tam analiz) ----------
 def temizle(host):
     host = host.replace("https://","").replace("http://","").rstrip("/")
     host = host.split("/")[0].split(":")[0].split("@")[-1]
@@ -350,7 +460,7 @@ async def full_recon(target):
    ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝ ╚═╝
 [/bold red]
 [bold magenta]★ ZANØX KÜRESEL TEHDİT İSTİHBARAT MOTORU ★ v{VERSION}[/]
-[bold green]MİMAR: {AUTHOR} | FINAL SÜRÜM — %100 HTTPS TABANLI[/]"""
+[bold green]MİMAR: {AUTHOR} | Geliştirilmiş WAF & Zafiyet Tespiti[/]"""
     console.print(Panel(logo, border_style="red", box=box.DOUBLE))
 
     rapor = Table(title=f"[bold yellow]HEDEF: {host}" + (f"  |  GERÇEK IP: {ip}" if ip else "  |  IP: çözülemedi") + "[/]",
@@ -370,6 +480,7 @@ async def full_recon(target):
         g2 = pr.add_task("[cyan]Port + servis taraması…", total=None)
         g3 = pr.add_task("[magenta]WAF + TLS + başlıklar…", total=None)
         g4 = pr.add_task("[green]Alt alan + harici OSINT…", total=None)
+        g5 = pr.add_task("[blue]Zafiyet (banner→CVE) taraması…", total=None)
 
         # Adım 1: DNS + RDAP
         try: await asyncio.gather(dns_enrich(host,rapor), rdap_lookup(host,rapor))
@@ -391,23 +502,67 @@ async def full_recon(target):
         except Exception: pass
         pr.update(g4, completed=True)
 
+        # Adım 5: Banner -> CVE taraması (port taraması çıktılarından banner toplama)
+        try:
+            # Basit: http HEAD ve banners for ports
+            banners = []
+            try:
+                async with httpx.AsyncClient(timeout=6, verify=False) as c:
+                    r = await c.get(f"https://{host}", headers={"User-Agent":"Mozilla/5.0 Zanox Banner"})
+                    banners.append(" ".join([r.headers.get("server",""), r.text[:200]]))
+            except Exception:
+                pass
+            # from port banners in report: (we didn't store them separately) — try basic common tcp banner grabs
+            try:
+                for p in [22,80,443,3306,9200,27017]:
+                    try:
+                        b = await banner_grab(ip, p)
+                        banners.append(b)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            await vuln_scan_from_banners(banners, rapor)
+        except Exception:
+            pass
+        pr.update(g5, completed=True)
+
     console.print()
     console.print(Panel(rapor, border_style="cyan", title="[bold]İSTİHBARAT BULGULARI[/]", box=box.ROUNDED))
     console.print(Panel(f"[bold green]★ ANALİZ TAMAMLANDI ★ — {AUTHOR}[/]", box=box.SIMPLE))
 
-# ---------------------------------------------------------------------
-# BÖLÜM 8 — ANA MENÜ
-# ---------------------------------------------------------------------
+# ---------- Basit menü ----------
 async def main():
     while True:
         console.print(Panel(f"[bold red]ZANØX THREAT INTEL CORE v{VERSION}[/]\n\n"
             "[cyan]1[/] — Tam İstihbarat & OSINT (tüm analizler)\n"
+            "[cyan]2[/] — Sadece WAF derin tespiti\n"
+            "[cyan]3[/] — Yerel hızlı audit (local çalıştır)\n"
             "[cyan]0[/] — Çıkış", title="ANA MENÜ", border_style="cyan"))
         sec = input(f"\n{YEL}Zanøx Intel >> {RST}").strip()
         if sec == "1":
             t = input(f"{CYAN}[?] Hedef (örn: instagram.com): {RST}").strip()
             if t:
                 await full_recon(t)
+                input(f"\n{YEL}[ENTER] menüye dön…{RST}")
+        elif sec == "2":
+            t = input(f"{CYAN}[?] Hedef (örn: instagram.com): {RST}").strip()
+            if t:
+                host = temizle(t)
+                rapor = Table(title=f"[bold yellow]WAF TARAMA: {host}[/]", expand=True)
+                rapor.add_column("Bilgi Kanalı"); rapor.add_column("Çıktı"); rapor.add_column("Kaynak"); rapor.add_column("Analiz")
+                await probe_waf(host, rapor)
+                console.print(Panel(rapor, border_style="magenta"))
+                input(f"\n{YEL}[ENTER] menüye dön…{RST}")
+        elif sec == "3":
+            console.print(Panel("[bold yellow]UYARI: Bu tarama yerelde çalıştırılmalıdır ve bazı komutlar root/ek yetki gerektirebilir.[/]\n"
+                                "[bold]Devam etmek istiyor musunuz? (y/n)"), border_style="red")
+            c = input().strip().lower()
+            if c == "y":
+                rapor = Table(title="[bold yellow]Yerel Hızlı Audit[/]", expand=True)
+                rapor.add_column("Bilgi Kanalı"); rapor.add_column("Çıktı"); rapor.add_column("Kaynak"); rapor.add_column("Analiz")
+                run_local_audit(rapor)
+                console.print(Panel(rapor, border_style="blue"))
                 input(f"\n{YEL}[ENTER] menüye dön…{RST}")
         elif sec == "0":
             console.print(Panel(f"[bold red]★ ZANØX INTEL OFFLINE ★\n\n{AUTHOR}[/]", title="KAPANIŞ"))
