@@ -885,7 +885,8 @@ def phone_id_menu():
     print(c(Colors.BOLD, "  [10] IMEI / TAC SORGULAMA MODÜLÜ"))
     print(c(Colors.HEADER, "=" * 55))
 
-    print(c(Colors.OKBLUE, "\n  1 - IMEI sorgulama (Luhn + TAC)")
+    print(c(Colors.OKBLUE, "\n  1 - IMEI sorgulama (Luhn + TAC)"))
+
     print("  2 - TAC kodu sorgulama")
     choice = input(c(Colors.OKCYAN, "\n[?] Seçiminiz (1-2): "))
 
