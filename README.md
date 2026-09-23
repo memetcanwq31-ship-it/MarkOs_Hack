@@ -12,6 +12,7 @@
 > - 🍎 macOS
 > - 📡 Raspberry Pi
 > - 🐳 Docker
+> - 🏴‍☠️ MarkOs 
 
 ![Language Composition](https://img.shields.io/badge/C%2B%2B-52.4%25-blue?style=flat-square)
 ![Language Composition](https://img.shields.io/badge/Python-19.1%25-green?style=flat-square)
@@ -744,4 +745,24 @@ Bu araçlar **yasal penetrasyon testleri** için hazırlanmıştır.
 
 *Millet İstediğini Seçebilsin, Sonuçta Çok Araç ve Tool Var 🤗*
 
-*Last Updated: 2026-07-13*
+
+## 👨‍💻 Kurulum
+**Kurulum** 
+**pkg install git -y**
+**pkg install python -y**
+**apt upgrade -y**
+**apt update -y**
+**pip install colorama**
+**pip install requests**
+**git clone https://github.com/memetcanwq31-ship-it/MarkOs_Hack.git**
+**cd MarkOs_Hack**
+*pip install -r requirements.txt**
+**pip install pillow**
+**pip install requests**
+**pip install httpx**
+**pip install console**
+**pip install rich**
+**pkg install sudo**
+**sudo install pillow**
+
+*Last Upgrade 23.09.2026**
