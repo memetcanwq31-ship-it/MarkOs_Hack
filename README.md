@@ -1,6 +1,6 @@
 # 🛠️ MarkOs - İlk İşletim Sistemim
 
-![BTK Academy - Siber Güvenlik A.Ş](assets/btk-academy-banner.svg)
+**![BTK Academy - Siber Güvenlik A.Ş]**(assets/btk-academy-banner.svg)
 
 > TT Sywox TX 🇩🇪/
 > 
