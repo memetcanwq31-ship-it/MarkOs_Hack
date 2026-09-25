@@ -1,9 +1,9 @@
 # 🛠️ MarkOs - İlk İşletim Sistemim
 
-**![BTK Academy - Siber Güvenlik A.Ş]**(assets/btk-academy-banner.svg)
+# MarkOs Studio 
 
 > TT Sywox TX 🇩🇪/
-> 
+> **MarkOs**
 > **HER PLATFORMDA ÇALIŞIR** 🚀
 > - 📱 Termux (Android)
 > - 🪟 Windows
